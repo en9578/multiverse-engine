@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.minbao.multiverse.dao.MultiverseTaskDAO">
+
+    <insert id="insert" parameterType="com.minbao.multiverse.domain.entity.MultiverseTaskDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO multiverse_task (request_id, status, last_completed_stage, product_name,
+            target_market, strategy_desc, result_json, overall_progress, trace_id, gmt_create, gmt_modified)
+        VALUES (#{requestId}, #{status}, #{lastCompletedStage, jdbcType=VARCHAR}, #{productName},
+            #{targetMarket}, #{strategyDesc}, #{resultJson, jdbcType=VARCHAR}, #{overallProgress, jdbcType=INTEGER},
+            #{traceId}, NOW(), NOW())
+    </insert>
+
+    <select id="selectById" parameterType="long"
+            resultType="com.minbao.multiverse.domain.entity.MultiverseTaskDO">
+        SELECT id, request_id, status, last_completed_stage, product_name, target_market,
+               strategy_desc, result_json, overall_progress, trace_id, gmt_create, gmt_modified
+        FROM multiverse_task WHERE id = #{id}
+    </select>
+
+    <select id="selectByRequestId" parameterType="string"
+            resultType="com.minbao.multiverse.domain.entity.MultiverseTaskDO">
+        SELECT id, request_id, status, last_completed_stage, product_name, target_market,
+               strategy_desc, result_json, overall_progress, trace_id, gmt_create, gmt_modified
+        FROM multiverse_task WHERE request_id = #{requestId}
+    </select>
+
+    <update id="updateStatus">
+        UPDATE multiverse_task SET status = #{status}, gmt_modified = NOW() WHERE id = #{id}
+    </update>
+
+</mapper>

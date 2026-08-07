@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.minbao.multiverse.dao.SettlementDecisionDAO">
+
+    <insert id="insert" parameterType="com.minbao.multiverse.domain.entity.SettlementDecisionDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO settlement_decision (universe_id, decision_data, is_confirmed, trace_id, gmt_create, gmt_modified)
+        VALUES (#{universeId}, #{decisionData}, #{isConfirmed, jdbcType=TINYINT}, #{traceId}, NOW(), NOW())
+    </insert>
+
+    <select id="selectByUniverseId" parameterType="long"
+            resultType="com.minbao.multiverse.domain.entity.SettlementDecisionDO">
+        SELECT id, universe_id, decision_data, is_confirmed, trace_id, gmt_create, gmt_modified
+        FROM settlement_decision WHERE universe_id = #{universeId}
+    </select>
+
+</mapper>

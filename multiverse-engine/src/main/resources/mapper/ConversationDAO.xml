@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.minbao.multiverse.dao.ConversationDAO">
+
+    <insert id="insert" parameterType="com.minbao.multiverse.domain.entity.ConversationDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO conversation (task_id, universe_id, session_id, role, content, trace_id, is_deleted, gmt_create, gmt_modified)
+        VALUES (#{taskId}, #{universeId}, #{sessionId}, #{role}, #{content}, #{traceId},
+            #{isDeleted, jdbcType=TINYINT}, NOW(), NOW())
+    </insert>
+
+    <select id="selectByTaskAndSession"
+            resultType="com.minbao.multiverse.domain.entity.ConversationDO">
+        SELECT id, task_id, universe_id, session_id, role, content, trace_id, is_deleted, gmt_create, gmt_modified
+        FROM conversation
+        WHERE task_id = #{taskId}
+          AND universe_id = #{universeId}
+          AND session_id = #{sessionId}
+          AND is_deleted = 0
+        ORDER BY gmt_create ASC
+    </select>
+
+</mapper>
