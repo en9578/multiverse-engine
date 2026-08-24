@@ -22,8 +22,12 @@ spring:
     baseline-on-migrate: true
     encoding: UTF-8
   ai:
-    dashscope:
-      # Demo 缺省占位 key（Spring AI Alibaba 启动时校验非空）；正式运行须设置 DASHSCOPE_API_KEY 环境变量
+    openai:
+      # token-plan 团队 key 仅支持 OpenAI 兼容协议（标准 dashscope.aliyuncs.com 对该 key 返回 401）
+      base-url: https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode
+      chat:
+        completions-path: /v1/chat/completions
+      # Demo 缺省占位 key；正式运行须设置 DASHSCOPE_API_KEY 环境变量
       api-key: ${DASHSCOPE_API_KEY:sk-dev-placeholder}
 
 mybatis:

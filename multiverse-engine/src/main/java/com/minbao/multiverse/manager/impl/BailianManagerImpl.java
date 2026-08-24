@@ -1,7 +1,5 @@
 package com.minbao.multiverse.manager.impl;
 
-import com.alibaba.cloud.ai.dashscope.chat.DashScopeChatOptions;
-import com.alibaba.cloud.ai.dashscope.image.DashScopeImageOptions;
 import com.minbao.multiverse.common.BusinessException;
 import com.minbao.multiverse.dao.BailianCallLogDAO;
 import com.minbao.multiverse.domain.entity.BailianCallLogDO;
@@ -18,9 +16,11 @@ import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.content.Media;
 import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.image.ImagePrompt;
-import org.springframework.ai.content.Media;
+import org.springframework.ai.openai.OpenAiChatOptions;
+import org.springframework.ai.openai.OpenAiImageOptions;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
 
@@ -29,7 +29,8 @@ import java.net.URI;
 import java.util.List;
 
 /**
- * 百炼 Spring AI Alibaba 统一接入实现（设计 §3.2 / §14.3）。
+ * 百炼统一接入实现（设计 §3.2 / §14.3）-- OpenAI 兼容协议版。
+ * token-plan 团队 key 仅支持 OpenAI 兼容协议，基地址见 application.yml `spring.ai.openai.base-url`；
  * 文本生成按 StageEnum 路由模型；生图 / 视觉 / 向量化走独立模型常量。
  * 每个方法含：幂等检查 → 熔断包装 → 重试(3次指数退避) → 落库记录（bailian_call_log）。
  */
@@ -48,11 +49,11 @@ public class BailianManagerImpl implements BailianManager {
     @Resource
     private CircuitBreaker bailianBreaker;
 
-    /** Spring AI Alibaba 自动装配的 DashScopeChatModel（ChatModel 接口） */
+    /** Spring AI OpenAI starter 自动装配（指向 token-plan 兼容基地址） */
     @Resource
     private ChatModel chatModel;
 
-    /** Spring AI Alibaba 自动装配的 DashScopeImageModel（ImageModel 接口） */
+    /** Spring AI OpenAI starter 自动装配的 OpenAiImageModel（ImageModel 接口） */
     @Resource
     private ImageModel imageModel;
 
@@ -95,8 +96,8 @@ public class BailianManagerImpl implements BailianManager {
     }
 
     private String doGenerateText(String model, String systemPrompt, String userPrompt) {
-        DashScopeChatOptions options = DashScopeChatOptions.builder()
-                .withModel(model)
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(model)
                 .build();
 
         List<Message> messages;
@@ -149,10 +150,11 @@ public class BailianManagerImpl implements BailianManager {
     }
 
     private String doGenerateImage(String prompt) {
-        ImagePrompt imagePrompt = new ImagePrompt(prompt, DashScopeImageOptions.builder()
-                .withModel(IMAGE_MODEL)
-                .withSize("1024*1024")
-                .withN(1)
+        ImagePrompt imagePrompt = new ImagePrompt(prompt, OpenAiImageOptions.builder()
+                .model(IMAGE_MODEL)
+                .width(1024)
+                .height(1024)
+                .N(1)
                 .build());
         var response = imageModel.call(imagePrompt);
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
@@ -203,9 +205,8 @@ public class BailianManagerImpl implements BailianManager {
                 .text(prompt)
                 .media(media)
                 .build();
-        DashScopeChatOptions options = DashScopeChatOptions.builder()
-                .withModel(VL_MODEL)
-                .withMultiModel(true)
+        OpenAiChatOptions options = OpenAiChatOptions.builder()
+                .model(VL_MODEL)
                 .build();
         List<Message> messages = List.of(userMessage);
         ChatResponse response = chatModel.call(new Prompt(messages, options));

@@ -16,7 +16,20 @@
     <description>AI 跨境商业多元宇宙引擎</description>
     <properties>
         <java.version>21</java.version>
+        <spring-ai.version>1.0.0</spring-ai.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -81,11 +94,10 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-        <!-- 百炼 Spring AI Alibaba 官方 Starter（设计 §3.1：直连 DashScope，覆盖 qwen/deepseek/wanx/vl/embedding 全家桶） -->
+        <!-- 百炼接入：token-plan 团队 key 仅支持 OpenAI 兼容协议，故用 Spring AI OpenAI starter 指向 token-plan 基地址 -->
         <dependency>
-            <groupId>com.alibaba.cloud.ai</groupId>
-            <artifactId>spring-ai-alibaba-starter-dashscope</artifactId>
-            <version>1.1.2.0</version>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
     </dependencies>
     <build>

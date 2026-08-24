@@ -75,16 +75,18 @@ Do **not** put markdown docs in the project directory. Key docs in the knowledge
 1. **Explainable reasoning, not black-box**: `RuleEngine` outputs `evidences` with `source: kb | r1_inferred` weight tags. deepseek-v4-pro Grounding (must cite KB data), qwen3.8-max cross-validation (temperature=0.0), direction-only prediction (no absolute values), backtesting >80% accuracy.
 2. **Agent orchestration without LangGraph**: `TaskStatusEnum` state machine + `@Async` + `CompletableFuture.allOf` for universe fan-out (3 time + 5 strategy). `last_completed_stage` field + `/retry` endpoint for checkpoint recovery. `updateStatus` before SETTLING for human-in-the-loop.
 3. **Model routing**: `StageEnum` → Bailian model: COLLECTING→qwen3.7-plus, GENERATING/EXPLORING→deepseek-v4-pro, SETTLING→qwen3.8-max；生图→wan2.7-image-pro、VL→qwen-vl-plus、向量化→text-embedding-v3（非文本模型走 `BailianManager` 独立方法，不经 `StageEnum`）。
+   **API 端点（重要）**: 团队 key 为 token-plan 团队标准版，仅支持 **OpenAI 兼容协议**，基地址 `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`；标准 `dashscope.aliyuncs.com` 对该 key 返回 401。`BailianManagerImpl` 走 Spring AI OpenAI starter 指向该基地址，key 通过 `DASHSCOPE_API_KEY` 环境变量注入，勿写入代码/配置文件。
 4. **Token budget**: ~47 Credits per task (V4-pro 5 universes ≈ 35), 25,000 Credits package ≈ 530+ tasks. Graded reasoning (core=V4-pro, secondary=rule/qwen3.7-plus), idempotency cache, context compression, budget cap with auto-degrade.
 5. **Data freshness**: Tavily + frankfurter + KB dual-source, TTL tiers (Fresh/Stale 0.5x/Missing), `last_verified` visible. Keepa API (€49/mo) designed but disabled for Demo — price history data from manual KB entry.
 6. **Recall layer (LLM-Wiki)**: Four-way recall cut to single LLM-Wiki. Wiki stores facts only (what happened), not inferences (no confidence scores). R1 reasons independently from raw facts. Scene-filtered pre-classification, no runtime retrieval overhead. Updated incrementally with data collection.
 
 ## Implementation Progress
 
-按设计文档分阶段推进（P0 → P1 → P2 → P3 → P4）：
+按设计文档分阶段推进（P0 → P1 → P2 → P3 → P4）。P0+P1 已提交（commit ac06933）：
 
 - **P0 技术栈对齐（完成）**：`dashscope-sdk-java` → Spring AI Alibaba 1.1.2.0，`StageEnum` 模型路由修正，`BailianManagerImpl` 重写。
 - **P1 五维宇宙（完成）**：`generateUniverses` 重构为 3 时间宇宙 + 5 策略宇宙（每策略宇宙附着 关联/极端/天气），新增 3 张表 + 4 枚举，5 个 builder + `StressTestEngine` + `R1Enhancer` + `MultiverseGenerator` 实现。
+- **LLM 全流程 smoke test（待做）**：唯一阻塞是 token-plan 配额（2026-08-24 实测 429 insufficient_quota）。协议切换已完成并验证接线正确（错误从 dashscope 的 401 InvalidApiKey 变为 token-plan 的 429 insufficient_quota，说明认证已通过、仅剩配额）。
 - **P2 可解释推演（待做）**：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、修正 `source: "kb"` 标签（当前为无 KB 的启发式规则）。
 - **P3 数据源（待做）**：Tavily + frankfurter + LLM-Wiki + TTL 分层（`last_verified`）。
 - **P4 Token 追踪（待做）**：填充 `bailian_call_log.token_count`。
