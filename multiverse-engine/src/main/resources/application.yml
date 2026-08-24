@@ -30,6 +30,21 @@ spring:
       # Demo 缺省占位 key；正式运行须设置 DASHSCOPE_API_KEY 环境变量
       api-key: ${DASHSCOPE_API_KEY:sk-dev-placeholder}
 
+data-source:
+  frankfurter:
+    # 官方端点（.app 已 301 到 .dev/v1），免费无 key；免费 API 偶发响应慢，读超时放宽到 8s
+    base-url: ${FRANKFURTER_BASE_URL:https://api.frankfurter.dev/v1}
+    connect-timeout-ms: 3000
+    read-timeout-ms: 8000
+  tavily:
+    # 未配置 TAVILY_API_KEY 时自动跳过实时搜索，KB 预设兜底
+    api-key: ${TAVILY_API_KEY:}
+    base-url: https://api.tavily.com
+  kb:
+    pain-point-file: pain_point_kb.yml
+    policy-file: policy_kb.yml
+    competitor-strategy-file: competitor_strategy_kb.yml
+
 mybatis:
   mapper-locations: classpath:mapper/*.xml
   type-aliases-package: com.minbao.multiverse.domain.entity

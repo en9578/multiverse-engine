@@ -2,15 +2,20 @@ package com.minbao.multiverse.common;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
 import java.util.Map;
 
 /**
  * LLM 输出 JSON 容错解析工具。
  * 剥离 markdown code fence 与前后杂文本，提取首个完整 JSON 对象。
+ * ObjectMapper 注册 JavaTimeModule 并输出 ISO 日期字符串（P3 market_data.raw_data 落库/展示）。
  */
 public final class JsonUtil {
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER = new ObjectMapper()
+            .registerModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     private JsonUtil() {}
 

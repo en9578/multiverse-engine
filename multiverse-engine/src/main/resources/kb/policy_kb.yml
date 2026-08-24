@@ -1,0 +1,47 @@
+# 政策法规知识库（P3 数据源，设计 §22.1：法规变更低频，TTL 季级 90 天）
+# last_verified 放 2026-04 区间演示 Stale 降权（法规低频变更，过期可接受但降权）。
+entries:
+  - id: PLCY-001
+    name: 德国电气与电子设备法 ElektroG
+    category: POLICY
+    market: DE
+    keywords: [WEEE, ElektroG, 电子电气]
+    frequency: N/A
+    severity: high
+    description: 在德销售电子电气产品须完成 WEEE 注册并标注回收标识，未注册将被禁售并罚款
+    last_verified: 2026-04-10
+    freshness_ttl_days: 90
+    verification_source: 德国官方 WEEE 注册库
+  - id: PLCY-002
+    name: 德国包装法 VerpackG
+    category: POLICY
+    market: DE
+    keywords: [VerpackG, 包装]
+    frequency: N/A
+    severity: high
+    description: 销售商须在 LUCID 注册包装，并按材料申报，违规最高罚款 20 万欧元
+    last_verified: 2026-04-12
+    freshness_ttl_days: 90
+    verification_source: 德国中央包装登记处 LUCID
+  - id: PLCY-003
+    name: 欧盟通用产品安全法规 GPSR
+    category: POLICY
+    market: EU
+    keywords: [GPSR, 产品安全]
+    frequency: N/A
+    severity: high
+    description: 2024-12 起欧盟市场所有消费品须有欧盟内责任人，listing 须展示制造商与责任人信息
+    last_verified: 2026-04-08
+    freshness_ttl_days: 90
+    verification_source: 欧盟委员会 GPSR 官方指引
+  - id: PLCY-004
+    name: 美国 CPSC 消费品安全要求
+    category: POLICY
+    market: US
+    keywords: [CPSC, 消费品安全]
+    frequency: N/A
+    severity: medium
+    description: 电子类消费品须满足 CPSC 安全标准并提供合规文件，儿童相关品类要求更严
+    last_verified: 2026-04-15
+    freshness_ttl_days: 90
+    verification_source: 美国消费品安全委员会

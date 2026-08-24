@@ -1,0 +1,58 @@
+# 痛点知识库（P3 数据源，设计 §22.1：痛点模式变化慢，TTL 月级 30 天）
+# last_verified 刻意放 2026-06 区间演示 Stale 降权；2 条设今天演示 Fresh。
+entries:
+  - id: GD-001
+    name: 水箱漏水
+    category: PAIN_POINT
+    market: ALL
+    keywords: [leak, water, 漏水]
+    frequency: high
+    severity: critical
+    description: 水箱/接口处漏水是差评最高频投诉，直接影响复购
+    last_verified: 2026-06-15
+    freshness_ttl_days: 30
+    verification_source: amazon_de_review_scan_2026-06
+  - id: GD-002
+    name: 水泵噪音大
+    category: PAIN_POINT
+    market: ALL
+    keywords: [noise, pump, 噪音]
+    frequency: medium
+    severity: major
+    description: 夜间水泵运行噪音影响睡眠，退货主因之一
+    last_verified: 2026-08-24
+    freshness_ttl_days: 30
+    verification_source: amazon_de_review_scan_2026-08
+  - id: GD-003
+    name: 滤芯更换不便
+    category: PAIN_POINT
+    market: ALL
+    keywords: [filter, 滤芯]
+    frequency: medium
+    severity: minor
+    description: 滤芯拆卸费力、耗材价格贵，用户抱怨维护成本
+    last_verified: 2026-06-20
+    freshness_ttl_days: 30
+    verification_source: amazon_us_review_scan_2026-06
+  - id: GD-004
+    name: 断电后设置丢失
+    category: PAIN_POINT
+    market: ALL
+    keywords: [memory, setting, 断电]
+    frequency: low
+    severity: minor
+    description: 停电后定时/档位设置重置，智能化卖点反成槽点
+    last_verified: 2026-08-24
+    freshness_ttl_days: 30
+    verification_source: amazon_us_review_scan_2026-08
+  - id: GD-005
+    name: 水箱难清洗
+    category: PAIN_POINT
+    market: ALL
+    keywords: [clean, hygiene, 清洗]
+    frequency: medium
+    severity: major
+    description: 水箱结构死角多，清洗不净滋生细菌，与宠物健康强关联
+    last_verified: 2026-05-30
+    freshness_ttl_days: 30
+    verification_source: amazon_de_review_scan_2026-05

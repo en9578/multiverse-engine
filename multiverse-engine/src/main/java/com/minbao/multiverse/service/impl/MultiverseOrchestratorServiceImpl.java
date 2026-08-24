@@ -2,14 +2,18 @@ package com.minbao.multiverse.service.impl;
 
 import com.minbao.multiverse.common.BusinessException;
 import com.minbao.multiverse.common.JsonUtil;
+import com.minbao.multiverse.dao.MarketDataDAO;
 import com.minbao.multiverse.dao.MultiverseTaskDAO;
 import com.minbao.multiverse.dao.UniverseDAO;
 import com.minbao.multiverse.domain.bo.CollectedDataBO;
 import com.minbao.multiverse.domain.bo.SettlementBO;
 import com.minbao.multiverse.domain.dto.CreateTaskDTO;
 import com.minbao.multiverse.domain.dto.RetryTaskDTO;
+import com.minbao.multiverse.domain.entity.MarketDataDO;
 import com.minbao.multiverse.domain.entity.MultiverseTaskDO;
 import com.minbao.multiverse.domain.entity.UniverseDO;
+import com.minbao.multiverse.domain.vo.CollectedDataVO;
+import com.minbao.multiverse.domain.vo.MarketDataItemVO;
 import com.minbao.multiverse.domain.vo.ProgressVO;
 import com.minbao.multiverse.domain.vo.TaskVO;
 import com.minbao.multiverse.domain.vo.UniverseVO;
@@ -37,6 +41,7 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
 
     @Resource private MultiverseTaskDAO multiverseTaskDAO;
     @Resource private UniverseDAO universeDAO;
+    @Resource private MarketDataDAO marketDataDAO;
     @Resource private MultiverseEngine multiverseEngine;
     @Resource @Qualifier("multiverseExecutor") private ThreadPoolTaskExecutor multiverseExecutor;
 
@@ -136,6 +141,52 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
     public List<UniverseVO> getUniversesByTaskId(Long taskId) {
         List<UniverseDO> universes = universeDAO.selectByTaskId(taskId);
         return universes.stream().map(this::toUniverseVO).collect(Collectors.toList());
+    }
+
+    @Override
+    public CollectedDataVO getCollectedData(Long taskId) {
+        MultiverseTaskDO task = multiverseTaskDAO.selectById(taskId);
+        if (task == null) throw new BusinessException(ErrorCodeEnum.TASK_NOT_FOUND);
+
+        List<MarketDataDO> rows = marketDataDAO.selectByTaskId(taskId);
+        List<MarketDataItemVO> items = rows.stream().map(this::toMarketDataItem).collect(Collectors.toList());
+
+        CollectedDataVO vo = new CollectedDataVO();
+        vo.setTaskId(taskId);
+        vo.setProductName(task.getProductName());
+        vo.setTargetMarket(task.getTargetMarket());
+        vo.setItems(items);
+        return vo;
+    }
+
+    /** 逐条转换：来源 + last_verified + Fresh/Stale/Missing + 可读文案 */
+    private MarketDataItemVO toMarketDataItem(MarketDataDO row) {
+        MarketDataItemVO item = new MarketDataItemVO();
+        item.setCategory(row.getCategory());
+        item.setSource(row.getSource());
+        item.setLastVerified(row.getLastVerified() == null ? null : row.getLastVerified().toString());
+        item.setFreshnessTtlDays(row.getFreshnessTtlDays());
+        item.setFreshnessStatus(row.getFreshnessStatus());
+        item.setWeight(row.getWeight() == null ? null : row.getWeight().doubleValue());
+        item.setRawData(row.getRawData() == null ? null : JsonUtil.parseObject(row.getRawData()));
+        item.setDisplay(buildDisplay(row));
+        return item;
+    }
+
+    /** 可读文案：来源 + 最后验证日期 + Fresh/Stale/Missing 状态 */
+    private String buildDisplay(MarketDataDO row) {
+        String lastVerified = row.getLastVerified() == null ? "无" : row.getLastVerified().toString();
+        String status = row.getFreshnessStatus() == null ? "MISSING" : row.getFreshnessStatus();
+        if ("TAVILY".equals(row.getCategory()) && "MISSING".equals(status)) {
+            return "TAVILY，来源 tavily（未配置 TAVILY_API_KEY，本轮跳过实时搜索，KB 兜底）";
+        }
+        return switch (status) {
+            case "FRESH" -> row.getCategory() + "，来源 " + row.getSource()
+                    + "，最后验证 " + lastVerified + "，Fresh 全权重";
+            case "STALE" -> row.getCategory() + "，来源 " + row.getSource()
+                    + "，最后验证 " + lastVerified + "，Stale 降权 0.5x";
+            default -> row.getCategory() + "，来源 " + row.getSource() + "（无实时数据，纯 R1 推理）";
+        };
     }
 
     private int calcProgress(MultiverseTaskDO task) {

@@ -3,6 +3,7 @@ package com.minbao.multiverse.controller;
 import com.minbao.multiverse.common.Result;
 import com.minbao.multiverse.domain.dto.CreateTaskDTO;
 import com.minbao.multiverse.domain.dto.RetryTaskDTO;
+import com.minbao.multiverse.domain.vo.CollectedDataVO;
 import com.minbao.multiverse.domain.vo.ProgressVO;
 import com.minbao.multiverse.domain.vo.TaskVO;
 import com.minbao.multiverse.domain.vo.UniverseVO;
@@ -61,5 +62,11 @@ public class MultiverseTaskController {
     @GetMapping("/{taskId}/universes")
     public Result<List<UniverseVO>> getUniverses(@PathVariable Long taskId) {
         return Result.ok(orchestratorService.getUniversesByTaskId(taskId));
+    }
+
+    /** P3：数据采集效果展示（来源 + last_verified + Fresh/Stale/Missing） */
+    @GetMapping("/{taskId}/collected-data")
+    public Result<CollectedDataVO> getCollectedData(@PathVariable Long taskId) {
+        return Result.ok(orchestratorService.getCollectedData(taskId));
     }
 }

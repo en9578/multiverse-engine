@@ -25,7 +25,8 @@ public enum ErrorCodeEnum {
     FILE_TOO_LARGE(3001, "文件超限"),
     FILE_TYPE_UNSUPPORTED(3002, "文件类型不支持"),
     ENGINE_UNAVAILABLE(4001, "Python引擎不可用"),
-    KB_DATA_STALE(4002, "知识库数据过期(降权)");
+    KB_DATA_STALE(4002, "知识库数据过期(降权)"),
+    DATA_SOURCE_ERROR(4003, "外部数据源采集异常");
 
     private final int code;
     private final String message;

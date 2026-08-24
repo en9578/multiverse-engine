@@ -2,6 +2,7 @@ package com.minbao.multiverse.manager.impl;
 
 import com.minbao.multiverse.common.BusinessException;
 import com.minbao.multiverse.common.JsonUtil;
+import com.minbao.multiverse.collector.DataCollector;
 import com.minbao.multiverse.dao.SettlementDecisionDAO;
 import com.minbao.multiverse.dao.StressTestDAO;
 import com.minbao.multiverse.dao.UniverseDAO;
@@ -58,6 +59,7 @@ public class MultiverseEngineImpl implements MultiverseEngine {
     @Resource private RuleEngine ruleEngine;
     @Resource private UniverseRater universeRater;
     @Resource private MultiverseGenerator multiverseGenerator;
+    @Resource private DataCollector dataCollector;
     @Resource @Qualifier("bailianExecutor") private ThreadPoolTaskExecutor bailianExecutor;
 
     // ==================== 阶段一：数据采集 ====================
@@ -76,29 +78,46 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                             "defects":[{"name":"缺陷名","frequency":"high|medium|low","severity":"critical|major|minor","solution":"改进建议"}]}}
                 要求：competitors 给 3-8 个；compliance 给 2-4 条；sentiment 为 0-1 的差评率反向指标（越高越正面）。""";
 
-        String userPrompt = String.format("产品：%s\n目标市场：%s\n卖家策略描述：%s\n请输出该产品在此市场的 JSON 事实数据。",
+        // P3：先采集真实数据源（frankfurter 汇率 + KB 三类 + Tavily 降级），已落库 market_data，不依赖 LLM
+        CollectedDataBO data = dataCollector.collect(task);
+
+        String userPrompt = String.format("""
+                产品：%s
+                目标市场：%s
+                卖家策略描述：%s
+                实时数据源参考（请基于这些事实判断，标注来源）：
+                汇率：%s
+                知识库：%s
+                请输出该产品在此市场的 JSON 事实数据。""",
                 task.getProductName(), task.getTargetMarket(),
-                task.getStrategyDesc() == null ? "无" : task.getStrategyDesc());
+                task.getStrategyDesc() == null ? "无" : task.getStrategyDesc(),
+                JsonUtil.toJson(data.getExchangeRateData()),
+                JsonUtil.toJson(data.getKnowledgeBaseData()));
 
         Map<String, Object> parsed = null;
-        for (int i = 1; i <= 2; i++) {
-            String raw = bailianManager.generateText(StageEnum.COLLECTING, systemPrompt, userPrompt);
-            parsed = JsonUtil.parseObject(raw);
-            if (parsed != null) break;
-            log.warn("采集数据 JSON 解析失败，重试 taskId={} attempt={}", task.getId(), i);
-        }
-        if (parsed == null) {
-            throw new BusinessException(ErrorCodeEnum.BAILIAN_API_ERROR);
+        try {
+            for (int i = 1; i <= 2; i++) {
+                String raw = bailianManager.generateText(StageEnum.COLLECTING, systemPrompt, userPrompt);
+                parsed = JsonUtil.parseObject(raw);
+                if (parsed != null) break;
+                log.warn("采集数据 JSON 解析失败，重试 taskId={} attempt={}", task.getId(), i);
+            }
+        } catch (Exception e) {
+            log.warn("采集 LLM 调用失败，降级为真实数据源 + KB taskId={}", task.getId(), e);
         }
 
-        CollectedDataBO data = new CollectedDataBO();
-        data.setProductName(task.getProductName());
-        data.setTargetMarket(task.getTargetMarket());
-        data.setCompetitorData(Map.of("competitors",
-                parsed.get("competitors") instanceof List ? parsed.get("competitors") : List.of()));
-        data.setComplianceData(Map.of("compliance",
-                parsed.get("compliance") instanceof List ? parsed.get("compliance") : List.of()));
-        data.setReviewData(parsed.get("reviews") instanceof Map ? (Map<String, Object>) parsed.get("reviews") : Map.of());
+        if (parsed != null) {
+            data.setCompetitorData(Map.of("competitors",
+                    parsed.get("competitors") instanceof List ? parsed.get("competitors") : List.of()));
+            data.setComplianceData(Map.of("compliance",
+                    parsed.get("compliance") instanceof List ? parsed.get("compliance") : List.of()));
+            data.setReviewData(parsed.get("reviews") instanceof Map ? (Map<String, Object>) parsed.get("reviews") : Map.of());
+        } else {
+            data.setCompetitorData(Map.of("competitors", List.of()));
+            data.setComplianceData(Map.of("compliance", List.of()));
+            data.setReviewData(Map.of());
+            log.warn("采集 LLM 输出不可用（RULE_ONLY_FALLBACK）taskId={}", task.getId());
+        }
         log.info("收集数据完成 taskId={} competitors={} complianceRisks={}",
                 task.getId(),
                 ((List<?>) data.getCompetitorData().get("competitors")).size(),

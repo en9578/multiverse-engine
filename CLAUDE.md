@@ -88,7 +88,7 @@ Do **not** put markdown docs in the project directory. Key docs in the knowledge
 - **P1 五维宇宙（完成）**：`generateUniverses` 重构为 3 时间宇宙 + 5 策略宇宙（每策略宇宙附着 关联/极端/天气），新增 3 张表 + 4 枚举，5 个 builder + `StressTestEngine` + `R1Enhancer` + `MultiverseGenerator` 实现。
 - **LLM 全流程 smoke test（待做）**：唯一阻塞是 token-plan 配额（2026-08-24 实测 429 insufficient_quota）。协议切换已完成并验证接线正确（错误从 dashscope 的 401 InvalidApiKey 变为 token-plan 的 429 insufficient_quota，说明认证已通过、仅剩配额）。
 - **P2 可解释推演（待做）**：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、修正 `source: "kb"` 标签（当前为无 KB 的启发式规则）。
-- **P3 数据源（待做）**：Tavily + frankfurter + LLM-Wiki + TTL 分层（`last_verified`）。
+- **P3 数据源接入（完成数据源+T+展示，LLM-Wiki 待做）**：`DataCollector` 先于 LLM 采集真实数据源并落库 `market_data`（一行=task_id+category，幂等 upsert）。frankfurter 真实汇率（免费无 key，`MarketCurrency` 由 targetMarket 推导货币，读超时 8s）；KB 三类 YAML（`resources/kb/*.yml`，SnakeYAML 加载 + TTL 30/90/90 天）；TTL 三层 `DataFreshnessService`（Fresh 1.0 / Stale 0.5x / Missing 纯 R1，`source` 标注 kb/kb_stale/r1_inferred）；Tavily 降级 stub（预留 `TAVILY_API_KEY`，未配置时 KB 兜底并落库 MISSING 行）。`collectData` 改为「先 DataCollector 后 LLM」，LLM 失败降级真实数据源输出不抛异常（429 下全链路仍跑通）。展示端点 `GET /api/v1/tasks/{id}/collected-data` 返回每类数据的来源+last_verified+Fresh/Stale/Missing+权重。
 - **P4 Token 追踪（待做）**：填充 `bailian_call_log.token_count`。
 
-**已知偏差**：`RuleEngineImpl` / `EntanglementBuilder` 的 `source: "kb"` 目前是无 KB 的启发式规则，P2 一并修正。
+**已知偏差**：`RuleEngineImpl` / `EntanglementBuilder` 的 `source: "kb"` 目前是无 KB 的启发式规则，P2 一并修正。P3 KB 政策市场匹配为精确匹配（`market: EU` 的 GPSR 不命中 DE），LLM-Wiki 召回层未做。

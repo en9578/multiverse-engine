@@ -1,0 +1,51 @@
+# 竞品策略反应模式知识库（P3 数据源，设计 §22.1：反应模式较稳定，TTL 季级 90 天）
+# 存事实性反应模式，不做推断（推断由 R1 独立完成）。
+entries:
+  - id: CS-001
+    name: 竞品跟价反应
+    category: COMPETITOR_STRATEGY
+    market: ALL
+    keywords: [price, 跟价]
+    frequency: high
+    severity: N/A
+    description: 头部竞品对新品降价通常在 15 天内跟价，幅度约为新价的 60-90%
+    reaction_pattern: 15 天内跟价
+    last_verified: 2026-05-20
+    freshness_ttl_days: 90
+    verification_source: keepa_price_history_manual_2026-05
+  - id: CS-002
+    name: 新品首发低价抢量
+    category: COMPETITOR_STRATEGY
+    market: ALL
+    keywords: [launch, 首发, 低价]
+    frequency: medium
+    severity: N/A
+    description: 部分竞品在新品上市窗口用亏本价抢 BSR 头部位置，随后逐步回调
+    reaction_pattern: 首发低价后回调
+    last_verified: 2026-05-22
+    freshness_ttl_days: 90
+    verification_source: keepa_price_history_manual_2026-05
+  - id: CS-003
+    name: 差评危机公关
+    category: COMPETITOR_STRATEGY
+    market: ALL
+    keywords: [review, 差评, 公关]
+    frequency: medium
+    severity: N/A
+    description: 遭遇集中差评时竞品通常更新 listing 描述 + 批量沟通补偿，而非立即降价
+    reaction_pattern: listing 优化 + 补偿沟通
+    last_verified: 2026-05-25
+    freshness_ttl_days: 90
+    verification_source: amazon_de_listing_scan_2026-05
+  - id: CS-004
+    name: 广告预算加码
+    category: COMPETITOR_STRATEGY
+    market: ALL
+    keywords: [ads, 广告]
+    frequency: low
+    severity: N/A
+    description: 大促前 4 周竞品集中加投关键词广告，抢占搜索结果顶部曝光
+    reaction_pattern: 大促前广告加码
+    last_verified: 2026-06-02
+    freshness_ttl_days: 90
+    verification_source: 公开广告洞察数据_2026-06
