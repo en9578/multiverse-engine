@@ -1,8 +1,11 @@
 package com.minbao.multiverse.service.impl;
 
 import com.minbao.multiverse.common.BusinessException;
+import com.minbao.multiverse.common.JsonUtil;
 import com.minbao.multiverse.dao.MultiverseTaskDAO;
 import com.minbao.multiverse.dao.UniverseDAO;
+import com.minbao.multiverse.domain.bo.CollectedDataBO;
+import com.minbao.multiverse.domain.bo.SettlementBO;
 import com.minbao.multiverse.domain.dto.CreateTaskDTO;
 import com.minbao.multiverse.domain.dto.RetryTaskDTO;
 import com.minbao.multiverse.domain.entity.MultiverseTaskDO;
@@ -53,7 +56,7 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
         task.setRequestId(requestId);
         task.setProductName(dto.getProductName());
         task.setTargetMarket(dto.getTargetMarket());
-        task.setStrategyDesc(dto.getStrategyDesc());
+        task.setStrategyDesc(dto.getStrategyDesc() == null ? "" : dto.getStrategyDesc());
         task.setStatus(TaskStatusEnum.CREATED);
         task.setLastCompletedStage("");
         task.setTraceId(UUID.randomUUID().toString());
@@ -69,16 +72,20 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
     public void executeOrchestration(MultiverseTaskDO task) {
         try {
             updateStatus(task.getId(), TaskStatusEnum.COLLECTING);
-            multiverseEngine.collectData(task);
+            CollectedDataBO data = multiverseEngine.collectData(task);
+            markStage(task.getId(), "COLLECTING", 20);
 
             updateStatus(task.getId(), TaskStatusEnum.GENERATING);
-            multiverseEngine.generateUniverses(task);
+            multiverseEngine.generateUniverses(task, data);
+            markStage(task.getId(), "GENERATING", 40);
 
             updateStatus(task.getId(), TaskStatusEnum.EXPLORING);
-            multiverseEngine.exploreUniverses(task);
+            multiverseEngine.exploreUniverses(task, data);
+            markStage(task.getId(), "EXPLORING", 60);
 
             updateStatus(task.getId(), TaskStatusEnum.SETTLING);
-            multiverseEngine.settle(task);
+            SettlementBO settlement = multiverseEngine.settle(task);
+            multiverseTaskDAO.updateResult(task.getId(), JsonUtil.toJson(settlement), "SETTLING", 100);
 
             updateStatus(task.getId(), TaskStatusEnum.DONE);
             log.info("任务完成 taskId={}", task.getId());
@@ -90,6 +97,11 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
 
     private void updateStatus(Long taskId, TaskStatusEnum status) {
         multiverseTaskDAO.updateStatus(taskId, status.name());
+    }
+
+    /** 阶段完成打 checkpoint（last_completed_stage + progress），用于断点恢复与进度展示 */
+    private void markStage(Long taskId, String stage, int progress) {
+        multiverseTaskDAO.updateResult(taskId, null, stage, progress);
     }
 
     @Override
@@ -155,6 +167,7 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
         vo.setId(universe.getId());
         vo.setTaskId(universe.getTaskId());
         vo.setUniverseIndex(universe.getUniverseIndex());
+        vo.setDimension(universe.getDimension());
         vo.setRating(universe.getRating());
         vo.setSubState(universe.getSubState());
         vo.setSurvivalRate(universe.getSurvivalRate());

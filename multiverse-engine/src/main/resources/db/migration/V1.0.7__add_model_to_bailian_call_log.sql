@@ -1,0 +1,1 @@
+ALTER TABLE bailian_call_log ADD COLUMN model VARCHAR(32) DEFAULT '' COMMENT '模型名称' AFTER call_type;

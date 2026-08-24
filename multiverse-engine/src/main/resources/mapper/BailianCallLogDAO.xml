@@ -5,17 +5,17 @@
 
     <insert id="insert" parameterType="com.minbao.multiverse.domain.entity.BailianCallLogDO"
             useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO bailian_call_log (request_id, call_type, input_text, output_text, success,
+        INSERT INTO bailian_call_log (request_id, call_type, model, input_text, output_text, success,
             cost_ms, token_count, trace_id, gmt_create, gmt_modified)
-        VALUES (#{requestId}, #{callType}, #{inputText, jdbcType=VARCHAR}, #{outputText, jdbcType=VARCHAR},
+        VALUES (#{requestId}, #{callType}, #{model}, #{inputPrompt, jdbcType=VARCHAR}, #{outputText, jdbcType=VARCHAR},
             #{success, jdbcType=TINYINT}, #{costMs, jdbcType=BIGINT}, #{tokenCount, jdbcType=INTEGER},
             #{traceId}, NOW(), NOW())
     </insert>
 
     <select id="selectByRequestId" parameterType="string"
             resultType="com.minbao.multiverse.domain.entity.BailianCallLogDO">
-        SELECT id, request_id, call_type, input_text, output_text, success, cost_ms,
-               token_count, trace_id, gmt_create, gmt_modified
+        SELECT id, request_id, call_type, model, input_text AS inputPrompt, output_text AS outputText,
+               success, cost_ms, token_count AS tokenCount, trace_id, gmt_create AS gmtCreate, gmt_modified AS gmtModified
         FROM bailian_call_log WHERE request_id = #{requestId}
     </select>
 

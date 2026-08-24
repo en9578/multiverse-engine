@@ -10,4 +10,5 @@ import java.util.List;
 public interface SettlementDecisionDAO {
     int insert(SettlementDecisionDO decision);
     List<SettlementDecisionDO> selectByUniverseId(@Param("universeId") Long universeId);
+    int updateConfirm(@Param("id") Long id, @Param("isConfirmed") Boolean isConfirmed);
 }

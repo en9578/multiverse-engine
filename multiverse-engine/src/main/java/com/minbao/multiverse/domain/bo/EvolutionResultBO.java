@@ -21,5 +21,7 @@ public class EvolutionResultBO implements Serializable {
         private String input;
         private String output;
         private Double weight;
+        /** 证据来源：kb(知识库规则，全权重) | r1_inferred(R1 推断，半权重，未经知识库验证) */
+        private String source;
     }
 }

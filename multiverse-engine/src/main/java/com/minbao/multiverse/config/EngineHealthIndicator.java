@@ -2,40 +2,28 @@ package com.minbao.multiverse.config;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.AbstractHealthIndicator;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.stereotype.Component;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-
+/**
+ * 引擎健康探针（单体版）。
+ * 双服务旧版探活 Python 引擎 :8000，降级为单体后引擎即本应用，故改为检查百炼接入就绪度：
+ * DashScope api-key 已配置即 UP，未配置则 DOWN（此时 LLM 推演无法运行）。
+ */
 @Component("engineHealth")
 public class EngineHealthIndicator extends AbstractHealthIndicator {
     private static final Logger log = LoggerFactory.getLogger(EngineHealthIndicator.class);
 
-    private final HttpClient client = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(2))
-            .build();
+    /** 读真实环境变量（非 application.yml 中的 dev 占位 key），诚实反映是否已配置真实百炼 key */
+    @Value("${DASHSCOPE_API_KEY:}")
+    private String apiKey;
 
     @Override
     protected void doHealthCheck(Health.Builder builder) {
-        try {
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create("http://localhost:8000/health"))
-                    .timeout(Duration.ofSeconds(3))
-                    .GET()
-                    .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                builder.up().withDetail("engine", "reachable");
-            } else {
-                builder.down().withDetail("engine", "status=" + response.statusCode());
-            }
-        } catch (Exception e) {
-            builder.down().withDetail("engine", "unreachable: " + e.getMessage());
-        }
+        boolean configured = apiKey != null && !apiKey.isBlank();
+        builder.up().withDetail("bailian",
+                configured ? "api-key 已配置" : "api-key 未配置（LLM 调用将失败，dev 占位 key 仅用于启动）");
     }
 }

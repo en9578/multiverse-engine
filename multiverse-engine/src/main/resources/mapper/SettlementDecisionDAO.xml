@@ -15,4 +15,10 @@
         FROM settlement_decision WHERE universe_id = #{universeId}
     </select>
 
+    <update id="updateConfirm">
+        UPDATE settlement_decision
+        SET is_confirmed = #{isConfirmed, jdbcType=TINYINT}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
 </mapper>

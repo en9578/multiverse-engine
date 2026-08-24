@@ -21,6 +21,7 @@ public enum ErrorCodeEnum {
     TASK_QUEUE_FULL(2004, "任务队列已满"),
     CHECKPOINT_CORRUPTED(2005, "checkpoint损坏"),
     TASK_TIMEOUT(2006, "任务执行超时(>2h)"),
+    UNIVERSE_NOT_FOUND(2007, "宇宙不存在"),
     FILE_TOO_LARGE(3001, "文件超限"),
     FILE_TYPE_UNSUPPORTED(3002, "文件类型不支持"),
     ENGINE_UNAVAILABLE(4001, "Python引擎不可用"),

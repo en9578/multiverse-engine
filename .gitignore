@@ -1,24 +1,7 @@
-# Compiled output
-multiverse-engine/target/
-*.class
+# Local tool state
+.claude/
+.workbuddy/
 
-# IDE
-.idea/
-*.iml
-.vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment / secrets
-.env
-*.env.local
-
-# Python
-__pycache__/
-*.pyc
-.venv/
-
-# Test output
-bailian_test_output/
+# Logs / temp
+*.log
+target/

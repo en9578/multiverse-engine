@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.minbao.multiverse.dao.UniverseWeatherDAO">
+
+    <insert id="insert" parameterType="com.minbao.multiverse.domain.entity.UniverseWeatherDO"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO universe_weather (universe_id, weather, search_signal, sentiment_signal,
+            price_signal, policy_signal, forecast_7d, forecast_30d, forecast_90d,
+            trace_id, gmt_create, gmt_modified)
+        VALUES (#{universeId}, #{weather}, #{searchSignal, jdbcType=VARCHAR}, #{sentimentSignal, jdbcType=VARCHAR},
+            #{priceSignal, jdbcType=VARCHAR}, #{policySignal, jdbcType=VARCHAR},
+            #{forecast7d, jdbcType=VARCHAR}, #{forecast30d, jdbcType=VARCHAR}, #{forecast90d, jdbcType=VARCHAR},
+            #{traceId}, NOW(), NOW())
+    </insert>
+
+    <select id="selectByUniverseId" parameterType="long"
+            resultType="com.minbao.multiverse.domain.entity.UniverseWeatherDO">
+        SELECT id, universe_id, weather, search_signal, sentiment_signal, price_signal, policy_signal,
+               forecast_7d, forecast_30d, forecast_90d, trace_id, gmt_create, gmt_modified
+        FROM universe_weather WHERE universe_id = #{universeId}
+    </select>
+
+</mapper>

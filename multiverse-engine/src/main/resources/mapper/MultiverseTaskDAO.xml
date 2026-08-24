@@ -30,4 +30,11 @@
         UPDATE multiverse_task SET status = #{status}, gmt_modified = NOW() WHERE id = #{id}
     </update>
 
+    <update id="updateResult">
+        UPDATE multiverse_task SET result_json = #{resultJson, jdbcType=VARCHAR},
+            last_completed_stage = #{lastCompletedStage, jdbcType=VARCHAR},
+            overall_progress = #{overallProgress, jdbcType=INTEGER}, gmt_modified = NOW()
+        WHERE id = #{id}
+    </update>
+
 </mapper>

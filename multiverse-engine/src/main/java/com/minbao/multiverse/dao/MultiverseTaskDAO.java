@@ -10,4 +10,7 @@ public interface MultiverseTaskDAO {
     MultiverseTaskDO selectById(@Param("id") Long id);
     MultiverseTaskDO selectByRequestId(@Param("requestId") String requestId);
     int updateStatus(@Param("id") Long id, @Param("status") String status);
+    int updateResult(@Param("id") Long id, @Param("resultJson") String resultJson,
+                     @Param("lastCompletedStage") String lastCompletedStage,
+                     @Param("overallProgress") Integer overallProgress);
 }
