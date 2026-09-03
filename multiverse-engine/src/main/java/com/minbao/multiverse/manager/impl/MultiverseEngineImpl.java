@@ -202,11 +202,18 @@ public class MultiverseEngineImpl implements MultiverseEngine {
             log.warn("宇宙推演 LLM 调用失败，降级为仅规则推演 universeId={}", universe.getId(), e);
         }
 
-        // 4. 融合：LLM 0.7 / 规则 0.3；LLM 缺失则仅规则
+        // 4. 融合：LLM 0.7 / 规则 0.3；LLM 缺失则用「策略画像先验 + 5 风暴压力」规则融合，撑起 5 宇宙区分度
         double finalScore;
         if (Double.isNaN(llmScore)) {
+            double prior = ruleEngine.strategyPrior(toUniverseBO(universe));   // 策略画像先验 0-100
+            double avgSurvival = overallSurvival * 100;                         // 5 风暴均值分
+            double minSurvival = queryMinStormSurvival(universe.getId()) * 100; // 5 风暴最低分(风险)
+            ruleScore = clampScore(0.50 * prior + 0.30 * avgSurvival + 0.20 * minSurvival);
             finalScore = ruleScore;
-            log.warn("宇宙推演 LLM 输出不可用（RULE_ONLY_FALLBACK）universeId={}", universe.getId());
+            reasoning = "无 LLM key：按「策略画像先验 + 5 风暴压力融合」兜底评分（市场事实缺失，规则无法扣分）";
+            log.warn("宇宙推演 LLM 输出不可用（RULE_ONLY_FALLBACK + 画像先验）universeId={} finalScore={} prior={}",
+                    universe.getId(), Math.round(finalScore), Math.round(prior));
+            appendDegradedEvidence(ruleResult, prior, avgSurvival, minSurvival, finalScore);
         } else {
             finalScore = LLM_WEIGHT * llmScore + RULE_WEIGHT * ruleScore;
         }
@@ -238,6 +245,34 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                 .mapToDouble(t -> t.getSurvivalRate() == null ? 1.0 : t.getSurvivalRate())
                 .average().orElse(1.0);
         return Math.round(avg * 100) / 100.0;
+    }
+
+    /** 该策略宇宙 5 风暴中的最低存活率（最脆弱的极端场景，无则 1.0） */
+    private double queryMinStormSurvival(Long universeId) {
+        List<StressTestDO> tests = stressTestDAO.selectByUniverseId(universeId);
+        if (tests == null || tests.isEmpty()) return 1.0;
+        return tests.stream()
+                .mapToDouble(t -> t.getSurvivalRate() == null ? 1.0 : t.getSurvivalRate())
+                .min().orElse(1.0);
+    }
+
+    /** 降级融合分限幅（0-100，避免极端值压垮评级） */
+    private double clampScore(double v) {
+        return Math.max(5, Math.min(95, v));
+    }
+
+    /** 降级分支追加一条可解释证据：说明 finalScore 来自画像先验 + 风暴压力融合，非凭空数字 */
+    private void appendDegradedEvidence(EvolutionResultBO ruleResult,
+                                        double prior, double avgSurvival, double minSurvival, double score) {
+        if (ruleResult.getEvidences() == null) return;
+        EvolutionResultBO.RuleEvidence e = new EvolutionResultBO.RuleEvidence();
+        e.setRuleId("RULE_DEGRADED_PRIOR");
+        e.setInput(String.format("LLM 不可用，策略画像先验=%.1f, avgStormSurvival=%.1f, minStormSurvival=%.1f",
+                prior, avgSurvival, minSurvival));
+        e.setOutput(String.format("%.1f", score));
+        e.setWeight(0.5);
+        e.setSource("kb");
+        ruleResult.getEvidences().add(e);
     }
 
     // ==================== 阶段四：结算决策 ====================

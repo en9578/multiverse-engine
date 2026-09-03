@@ -21,6 +21,7 @@ import org.springframework.ai.image.ImageModel;
 import org.springframework.ai.image.ImagePrompt;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.openai.OpenAiImageOptions;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeTypeUtils;
 
@@ -42,6 +43,12 @@ public class BailianManagerImpl implements BailianManager {
     /** 非文本模型常量（设计 §14.3）：文生图 / 视觉理解 */
     private static final String IMAGE_MODEL = "wan2.7-image-pro";
     private static final String VL_MODEL = "qwen-vl-plus";
+
+    /** application.yml 缺省占位 key（${DASHSCOPE_API_KEY:sk-dev-placeholder}）；等于占位/空白视为未配置 */
+    private static final String PLACEHOLDER_API_KEY = "sk-dev-placeholder";
+
+    @Value("${spring.ai.openai.api-key:}")
+    private String apiKey;
 
     @Resource
     private BailianCallLogDAO callLogDAO;
@@ -69,6 +76,12 @@ public class BailianManagerImpl implements BailianManager {
         if (cached != null && Boolean.TRUE.equals(cached.getSuccess())) {
             log.info("百炼幂等命中 requestId={} stage={}", requestId, stage);
             return cached.getOutputText();
+        }
+
+        // Demo 未配置 key：直接短路降级，避免每次调用空等 3 次指数退避重试（约 7s）
+        if (apiKey == null || apiKey.isBlank() || PLACEHOLDER_API_KEY.equals(apiKey)) {
+            log.warn("百炼 api-key 未配置（占位），短路降级 requestId={} stage={}", requestId, stage);
+            throw new BusinessException(ErrorCodeEnum.LLM_DEGRADED);
         }
 
         for (int i = 1; i <= MAX_RETRY; i++) {

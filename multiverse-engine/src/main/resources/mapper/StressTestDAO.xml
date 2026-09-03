@@ -17,6 +17,7 @@
         SELECT id, universe_id, storm, survival_rate, weakest_link, fix_suggestion,
                trace_id, gmt_create, gmt_modified
         FROM stress_test WHERE universe_id = #{universeId}
+            ORDER BY id
     </select>
 
 </mapper>

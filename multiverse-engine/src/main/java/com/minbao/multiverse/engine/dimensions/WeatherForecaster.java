@@ -1,11 +1,14 @@
 package com.minbao.multiverse.engine.dimensions;
 
+import com.minbao.multiverse.dao.UniverseWeatherDAO;
 import com.minbao.multiverse.domain.bo.CollectedDataBO;
 import com.minbao.multiverse.domain.entity.UniverseWeatherDO;
 import com.minbao.multiverse.enums.WeatherEnum;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+
+import jakarta.annotation.Resource;
 
 import java.util.List;
 import java.util.Map;
@@ -19,6 +22,9 @@ import java.util.Map;
 @Component
 public class WeatherForecaster {
     private static final Logger log = LoggerFactory.getLogger(WeatherForecaster.class);
+
+    @Resource
+    private UniverseWeatherDAO universeWeatherDAO;
 
     public UniverseWeatherDO forecast(Long universeId, CollectedDataBO data, String traceId) {
         double sentiment = sentiment(data);
@@ -41,6 +47,8 @@ public class WeatherForecaster {
         do_.setTraceId(traceId);
         log.info("天气预测 universeId={} weather={} sentiment={} competitors={} policyHigh={}",
                 universeId, weather.getLabel(), sentiment, competitorCount, policyHigh);
+        // 落库（此前 forecast 只构造 DO 从不 insert，导致 universe_weather 恒空）
+        universeWeatherDAO.insert(do_);
         return do_;
     }
 

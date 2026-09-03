@@ -26,9 +26,31 @@ public class RuleEngineImpl implements RuleEngine {
     private static final Logger log = LoggerFactory.getLogger(RuleEngineImpl.class);
 
     private static final double BASE_SCORE = 100.0;
+    /** 无市场事实时策略画像先验缺省值（0-100） */
+    private static final double DEFAULT_PRIOR = 72.0;
 
     @Resource
     private UniverseRater universeRater;
+
+    @Override
+    public double strategyPrior(UniverseBO universe) {
+        Map<String, Object> pkg = JsonUtil.parseObject(universe.getStrategyPackage());
+        if (pkg == null) return DEFAULT_PRIOR;
+        String pricing = str(pkg.get("pricingStrategy"));
+        String sellingPoint = str(pkg.get("sellingPointStrategy"));
+        String positioning = str(pkg.get("positioningStrategy"));
+        double prior = switch (pricing + "|" + sellingPoint + "|" + positioning) {
+            case "高端|功能型|品类头部" -> 78.0;      // 溢价品质，红海但品牌力强
+            case "高端|差异化型|细分垂直" -> 86.0;    // 高净值细分，稀缺卖点壁垒高
+            case "性价比|功能型|细分垂直" -> 80.0;    // 垂直刚需，成本可控
+            case "性价比|情感型|品类头部" -> 66.0;    // 大众走量，拼内容与复购
+            case "低价引流|差异化型|价格破坏者" -> 45.0; // 极低价，利润薄、被跟价风险大
+            default -> DEFAULT_PRIOR;
+        };
+        log.debug("策略画像先验 universeId={} pricing={} sellingPoint={} positioning={} prior={}",
+                universe.getUniverseId(), pricing, sellingPoint, positioning, prior);
+        return prior;
+    }
 
     @Override
     public EvolutionResultBO evolve(UniverseBO universe, CollectedDataBO data) {

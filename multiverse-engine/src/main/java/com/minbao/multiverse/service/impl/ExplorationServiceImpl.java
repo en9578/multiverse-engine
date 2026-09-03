@@ -2,14 +2,23 @@ package com.minbao.multiverse.service.impl;
 
 import com.minbao.multiverse.common.BusinessException;
 import com.minbao.multiverse.common.JsonUtil;
+import com.minbao.multiverse.dao.CompetitorReactionDAO;
 import com.minbao.multiverse.dao.ConversationDAO;
 import com.minbao.multiverse.dao.GeneDefectDAO;
+import com.minbao.multiverse.dao.StressTestDAO;
 import com.minbao.multiverse.dao.UniverseDAO;
+import com.minbao.multiverse.dao.UniverseWeatherDAO;
 import com.minbao.multiverse.domain.dto.ExploreDTO;
+import com.minbao.multiverse.domain.entity.CompetitorReactionDO;
 import com.minbao.multiverse.domain.entity.ConversationDO;
 import com.minbao.multiverse.domain.entity.GeneDefectDO;
+import com.minbao.multiverse.domain.entity.StressTestDO;
 import com.minbao.multiverse.domain.entity.UniverseDO;
+import com.minbao.multiverse.domain.entity.UniverseWeatherDO;
+import com.minbao.multiverse.domain.vo.CompetitorReactionVO;
+import com.minbao.multiverse.domain.vo.StressTestVO;
 import com.minbao.multiverse.domain.vo.UniverseVO;
+import com.minbao.multiverse.domain.vo.UniverseWeatherVO;
 import com.minbao.multiverse.enums.ErrorCodeEnum;
 import com.minbao.multiverse.enums.StageEnum;
 import com.minbao.multiverse.manager.BailianManager;
@@ -43,6 +52,12 @@ public class ExplorationServiceImpl implements ExplorationService {
     private UniverseDAO universeDAO;
     @Resource
     private GeneDefectDAO geneDefectDAO;
+    @Resource
+    private StressTestDAO stressTestDAO;
+    @Resource
+    private UniverseWeatherDAO universeWeatherDAO;
+    @Resource
+    private CompetitorReactionDAO competitorReactionDAO;
     @Resource
     private ConversationDAO conversationDAO;
     @Resource
@@ -98,7 +113,52 @@ public class ExplorationServiceImpl implements ExplorationService {
         vo.setStrategyPackage(universe.getStrategyPackage());
         vo.setEvolutionData(JsonUtil.parseObject(universe.getEvolutionData()));
         vo.setGeneDefects(loadGeneDefects(universe.getId()));
+        vo.setStressTests(toStressVOs(universe.getId()));
+        vo.setWeather(toWeatherVO(universe.getId()));
+        vo.setCompetitorReactions(toReactionVOs(universe.getId()));
         return vo;
+    }
+
+    /** 5 风暴压力测试（仅 STRATEGY 宇宙有行，无则空 list） */
+    private List<StressTestVO> toStressVOs(Long universeId) {
+        return stressTestDAO.selectByUniverseId(universeId).stream().map(d -> {
+            StressTestVO vo = new StressTestVO();
+            vo.setStorm(d.getStorm());
+            vo.setSurvivalRate(d.getSurvivalRate());
+            vo.setWeakestLink(d.getWeakestLink());
+            vo.setFixSuggestion(d.getFixSuggestion());
+            return vo;
+        }).collect(Collectors.toList());
+    }
+
+    /** 市场气象（修复落库后 STRATEGY 宇宙一行；无则 null） */
+    private UniverseWeatherVO toWeatherVO(Long universeId) {
+        UniverseWeatherDO d = universeWeatherDAO.selectByUniverseId(universeId);
+        if (d == null) return null;
+        UniverseWeatherVO vo = new UniverseWeatherVO();
+        vo.setWeather(d.getWeather());
+        vo.setSearchSignal(d.getSearchSignal());
+        vo.setSentimentSignal(d.getSentimentSignal());
+        vo.setPriceSignal(d.getPriceSignal());
+        vo.setPolicySignal(d.getPolicySignal());
+        vo.setForecast7d(d.getForecast7d());
+        vo.setForecast30d(d.getForecast30d());
+        vo.setForecast90d(d.getForecast90d());
+        return vo;
+    }
+
+    /** 竞品关联反应（无 LLM 时为 []） */
+    private List<CompetitorReactionVO> toReactionVOs(Long universeId) {
+        return competitorReactionDAO.selectByUniverseId(universeId).stream().map(d -> {
+            CompetitorReactionVO vo = new CompetitorReactionVO();
+            vo.setCompetitorName(d.getCompetitorName());
+            vo.setReactionType(d.getReactionType());
+            vo.setProbability(d.getProbability());
+            vo.setImpact(d.getImpact());
+            vo.setSource(d.getSource());
+            vo.setEvidence(d.getEvidence());
+            return vo;
+        }).collect(Collectors.toList());
     }
 
     private UniverseDO requireUniverse(Long universeId) {

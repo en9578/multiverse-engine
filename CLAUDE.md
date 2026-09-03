@@ -37,7 +37,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 - 3 thread pools: `multiverseExecutor`(4/8/200), `bailianExecutor`(2/4/50), `explorationExecutor`(2/4/100) — all with `MdcTaskDecorator` for traceId propagation
 - Idempotency: `requestId` → `selectByRequestId()` hit returns cached result
 - Circuit breaker: Resilience4j, 50% failure rate threshold
-- 12 Flyway migrations (H2 dev / MySQL prod), 10 MyBatis mapper XMLs
+- 13 Flyway migrations (H2 dev / MySQL prod), 11 MyBatis mapper XMLs
 - Error codes: `ErrorCodeEnum` (22 codes) including `BAILIAN_*`, `LLM_DEGRADED`, `RULE_ONLY_FALLBACK`
 - Generation: `MultiverseGenerator` → 3 时间宇宙 + 5 策略宇宙（每个策略宇宙附着 关联反应 / 5 风暴压力测试 / 天气，落 `competitor_reaction` / `stress_test` / `universe_weather` 三表）
 
@@ -46,6 +46,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 - P1 五维宇宙：`MultiverseGenerator` + 5 个 builder（时间/策略/关联/极端/天气）+ `StressTestEngine` + `R1Enhancer`
 - `MultiverseEngineImpl` 四阶段（collect/generate/explore/settle）+ `RuleEngineImpl`（规则扣分 + evidences `source` 标注）
 - `UniverseRater`（score≥90→A、≥75→B、≥60→C、≥40→D、else F）、`Constants`、`StageEnum`、`TaskStatusEnum`
+- 复赛 Demo 前端：`frontend/`（React + Vite + TS，HashRouter，仅 react/react-dom/react-router-dom 三依赖）。四页面 Input→Run→StarMap→Detail→Decision。`npm run build:static` 把 Vite dist 复制进 `multiverse-engine/src/main/resources/static/`（**提交进 git**）→ 评审机零 node 依赖，`mvn spring-boot:run` 单命令整站。详情聚合：STRATEGY detail 返回 `stressTests`(5 风暴)/`weather`/`competitorReactions`；无 LLM key 时全链路降级跑 DONE，5 策略宇宙按「策略画像先验(0.5) + 5 风暴平均(0.3) + 最差风暴(0.2)」差异化评分（A–D 分布，附 `RULE_DEGRADED_PRIOR` 证据链）；TIME 宇宙 `rating:""` 未推演；`GET /decisions` 无决策返回 `data:null`。
 
 **Remaining stubs**:
 - `OssManagerImpl` — returns fake URLs

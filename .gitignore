@@ -5,3 +5,10 @@
 # Logs / temp
 *.log
 target/
+
+# Frontend build artifacts（dist 产物经 build:static 复制进 static/ 提交，勿双份入库）
+frontend/node_modules/
+frontend/dist/
+
+# TS incremental build artifacts
+*.tsbuildinfo
