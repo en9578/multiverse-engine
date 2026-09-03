@@ -2,6 +2,20 @@
 
 把跨境市场建模成多个平行宇宙，卖家先在宇宙中亲历策略 90 天命运演化，再回到现实定居评级最高的最优宇宙，拿到一个四种极端情况都能活的策略包。
 
+## 🚀 复赛 Demo · 快速开始（一体交付）
+
+```bash
+cd multiverse-engine
+mvn spring-boot:run -Dspring-boot.run.profiles=dev     # 前置：JDK 21 + Maven
+```
+
+打开 **http://localhost:8080** 即整站（React 前端已打包进 Spring Boot static，H2 内存库免配置）。Demo 流程：新建推演 → 阶段灯 + 数据新鲜度面板 → 星图（5 策略宇宙 A–D 评级 + 3 时间宇宙）→ 点卡看 **5 风暴压力雷达 / 市场气象 / 可解释证据链** → 穿越向导对话 → 定居决策并确认。
+
+- **零配置即可跑**：未设百炼 key 时引擎自动降级（真实汇率 + 知识库规则 + 压力测试），每处标注来源，**不伪造模型已生成**；
+- **全功能需 key**：`export DASHSCOPE_API_KEY=<百炼团队 key>` 后重启。key 仅支持 OpenAI 兼容协议（token-plan 基地址），详见下文「模型调用」；
+- 改前端：`cd frontend && npm run build:static`（产物提交进 static，评审机仍单命令起）。
+- 完整说明见知识库 `demo-run-guide.md` / `tech-stack-and-models.md`。
+
 ## 解决什么问题
 
 跨境卖家选品定价本质是在时间、策略、竞争、极端事件四个维度的不确定性里下注。传统工具只给静态报表，没法回答"如果我用 A 策略，90 天后在各种竞争格局下会怎样"。选品、竞品、评论、定价、合规在传统工具里是五个孤立功能，信息在方向之间断裂。
@@ -16,17 +30,33 @@
 4. **定居决策**：综合评级选最优宇宙，输出反脆弱组合（四种极端情景下都能赢的策略包）
 5. **幻觉抑制与降级**：四层防线压住大模型编造事实的倾向，结果带置信度评分，用户能区分哪些结论有数据支撑、哪些是 AI 推断
 
-## 技术栈
+## 技术栈（复赛现状 · 单体）
 
 | 层 | 技术 | 说明 |
 |----|------|------|
-| Java 后端 | Spring Boot 3.4.4 / Java 21 | REST API、MyBatis 持久化、SSE 推送、Resilience4j 熔断 |
-| Python 引擎 | FastAPI + LangGraph | 多元宇宙生成、规则推演、状态机编排 |
-| 数据库 | MySQL / PostgreSQL / Redis | 业务数据 / LangGraph checkpoint / 幂等缓存+消息总线 |
-| 数据迁移 | Flyway | 7 张表版本化迁移，H2(dev) 和 MySQL(prod) 共用脚本 |
-| 百炼模型 | Qwen-Plus / DeepSeek-R1 / Qwen-VL / 万相 / text-embedding-v3 | 痛点抽取 / 格局推演 / 合规检测 / 策略配图 / 向量化 |
+| 后端 | Spring Boot 3.4.4 / Java 21 / MyBatis / Resilience4j | 4 层单体：Controller→Service→Manager→DAO；状态机编排 + @Async 宇宙扇出 |
+| 模型接入 | Spring AI Alibaba（OpenAI 兼容协议 → 百炼 token-plan） | `ChatModel`/`ImageModel`，key 仅环境变量注入；详见下方「模型调用」 |
+| 数据库 | H2(dev) / MySQL(prod)，Flyway 13 迁移 | 13 表 + 11 MyBatis XML |
+| 数据源 | frankfurter 真实汇率 + 本地 KB YAML + Tavily(预留) | TTL 新鲜度分层 Fresh/Stale/Missing，last_verified 对用户可见 |
+| 前端 | React 18 + Vite + TS（HashRouter） | 构建产物提交进 Spring Boot static → 单命令整站；无图表库，雷达自绘 SVG |
+| Python 引擎 | ~~FastAPI + LangGraph~~ | 已按降级迁移收敛移除，业务并入 Java 单体 |
 
-## 架构
+## 模型调用（百炼）
+
+所有文本生成按阶段路由，走 OpenAI 兼容协议（团队 key 仅兼容该协议）：
+
+| 阶段 | 模型 |
+|---|---|
+| COLLECTING | qwen3.7-plus |
+| GENERATING / EXPLORING | deepseek-v4-pro |
+| SETTLING | qwen3.8-max |
+| 非文本 | wan2.7-image-pro(生图) / qwen-vl-plus(视觉合规) / text-embedding-v3(向量化) |
+
+未设置 `DASHSCOPE_API_KEY` 时引擎自动降级（真实数据 + 规则先验 + 5 风暴压力），全程诚实标注来源，不影响体验闭环。
+
+## 架构（初赛期双服务设计 · 历史）
+
+> 下方为初赛期的 Python/LangGraph 双服务叙述，**已归档**（见 `downgrade-migration-plan.md`）；复赛实现为上面的单体 Java，请以顶部「快速开始」为准。
 
 ```
 用户一句话需求（品类/预算/市场）
