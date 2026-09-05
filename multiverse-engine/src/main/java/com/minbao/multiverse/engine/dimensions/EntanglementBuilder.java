@@ -3,6 +3,7 @@ package com.minbao.multiverse.engine.dimensions;
 import com.minbao.multiverse.common.JsonUtil;
 import com.minbao.multiverse.dao.CompetitorReactionDAO;
 import com.minbao.multiverse.domain.bo.CollectedDataBO;
+import com.minbao.multiverse.domain.bo.EvolutionResultBO;
 import com.minbao.multiverse.domain.bo.UniverseBO;
 import com.minbao.multiverse.domain.entity.CompetitorReactionDO;
 import com.minbao.multiverse.engine.evolution.R1Enhancer;
@@ -18,8 +19,8 @@ import java.util.Map;
 /**
  * 关联维度宇宙（设计 §3.3.3 / §4.2）。
  * 推演竞品对卖家策略的反应（跟价/跟款/差异化/无视）：
- * 规则引擎做核心推演（source=kb，按竞品价格/评分/销量规模匹配反应模式）+ R1 推理增强补充
- * （source=r1_inferred，规则未覆盖场景）。
+ * 规则基线做确定性启发式推演（source=heuristic，按竞品价格/评分/销量规模阈值判断）+ R1 推理增强补充
+ * （source=r1_inferred，规则未覆盖场景）。competitor_strategy_kb 反哺规则后 rule 行方可升为 source=kb。
  */
 @Component
 public class EntanglementBuilder {
@@ -103,7 +104,7 @@ public class EntanglementBuilder {
         reaction.setReactionType(type.getLabel());
         reaction.setProbability(clamp(prob));
         reaction.setImpact(impact);
-        reaction.setSource("kb");
+        reaction.setSource(EvolutionResultBO.RuleEvidence.SRC_HEURISTIC);
         reaction.setEvidence(evidence);
         reaction.setTraceId(traceId);
         return reaction;

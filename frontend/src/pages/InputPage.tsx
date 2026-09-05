@@ -123,7 +123,7 @@ export default function InputPage() {
 
       <div className="mt-14">
         <DegradedBanner reason="演示说明：配置 DASHSCOPE_API_KEY 后 LLM 全链路开启（采集/生成/推演/结算都调用百炼模型）；未配置时引擎自动降级为「真实数据 + 知识库规则 + 压力测试」，并用诚实标签标注每处数据来源。">
-          <span className="muted">两种模式都可完整体验业务闭环，唯一差异是可解释证据的来源标签（kb 规则 vs r1_inferred 模型推断）。</span>
+          <span className="muted">两种模式都可完整体验业务闭环；差异在证据来源标签：LLM 在线时含 r1_inferred 模型推断，降级时启发式规则标 heuristic、真 KB 政策引用标 kb/kb_stale。所有证据来源诚实标注，可逐条追溯。</span>
         </DegradedBanner>
       </div>
     </div>

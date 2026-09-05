@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.metadata.Usage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -46,6 +47,10 @@ public class BailianManagerImpl implements BailianManager {
 
     /** application.yml 缺省占位 key（${DASHSCOPE_API_KEY:sk-dev-placeholder}）；等于占位/空白视为未配置 */
     private static final String PLACEHOLDER_API_KEY = "sk-dev-placeholder";
+
+    /** do* 私有调用结果（把 ChatResponse 的 usage 带出到 wrapper，供 bailian_call_log 落 token_count） */
+    private record TextOutcome(String text, Integer tokenCount) {}
+    private record ImageOutcome(String url) {}
 
     @Value("${spring.ai.openai.api-key:}")
     private String apiKey;
@@ -85,13 +90,16 @@ public class BailianManagerImpl implements BailianManager {
         }
 
         for (int i = 1; i <= MAX_RETRY; i++) {
+            long attemptStart = System.currentTimeMillis();
             try {
-                String result = bailianBreaker.executeSupplier(
+                TextOutcome out = bailianBreaker.executeSupplier(
                         () -> doGenerateText(model, systemPrompt, userPrompt));
+                long costMs = System.currentTimeMillis() - attemptStart;
                 callLogDAO.insert(BailianCallLogDO.success(requestId, "text", model,
-                        truncate(fullPrompt, 500), result, null, null));
-                log.info("百炼文本生成成功 requestId={} stage={} model={} retry={}", requestId, stage, model, i);
-                return result;
+                        truncate(fullPrompt, 500), out.text(), costMs, out.tokenCount()));
+                log.info("百炼文本生成成功 requestId={} stage={} model={} retry={} costMs={}ms tokens={}",
+                        requestId, stage, model, i, costMs, out.tokenCount());
+                return out.text();
             } catch (CallNotPermittedException e) {
                 log.warn("百炼熔断开启 requestId={}", requestId);
                 throw new BusinessException(ErrorCodeEnum.CIRCUIT_OPEN, e);
@@ -99,7 +107,8 @@ public class BailianManagerImpl implements BailianManager {
                 log.warn("百炼调用异常 requestId={} retry={}/{} model={}", requestId, i, MAX_RETRY, model, e);
                 if (i == MAX_RETRY) {
                     callLogDAO.insert(BailianCallLogDO.fail(requestId, "text", model,
-                            truncate(fullPrompt, 500), e.getMessage()));
+                            truncate(fullPrompt, 500), e.getMessage(),
+                            System.currentTimeMillis() - attemptStart));
                     throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT, e);
                 }
                 sleepBackoff(i);
@@ -108,7 +117,7 @@ public class BailianManagerImpl implements BailianManager {
         throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT);
     }
 
-    private String doGenerateText(String model, String systemPrompt, String userPrompt) {
+    private TextOutcome doGenerateText(String model, String systemPrompt, String userPrompt) {
         OpenAiChatOptions options = OpenAiChatOptions.builder()
                 .model(model)
                 .build();
@@ -124,7 +133,7 @@ public class BailianManagerImpl implements BailianManager {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
             throw new BusinessException(ErrorCodeEnum.BAILIAN_API_ERROR);
         }
-        return response.getResult().getOutput().getText();
+        return new TextOutcome(response.getResult().getOutput().getText(), usageTokens(response));
     }
 
     // ==================== 图片生成（wan2.7-image-pro） ====================
@@ -140,12 +149,15 @@ public class BailianManagerImpl implements BailianManager {
         }
 
         for (int i = 1; i <= MAX_RETRY; i++) {
+            long attemptStart = System.currentTimeMillis();
             try {
-                String result = bailianBreaker.executeSupplier(() -> doGenerateImage(prompt));
+                ImageOutcome out = bailianBreaker.executeSupplier(() -> doGenerateImage(prompt));
+                long costMs = System.currentTimeMillis() - attemptStart;
+                // 文生图走 OpenAI 图片接口，无 token usage，token_count 置空
                 callLogDAO.insert(BailianCallLogDO.success(requestId, "image", IMAGE_MODEL,
-                        truncate(prompt, 500), result, null, null));
-                log.info("百炼生图成功 requestId={} model={} retry={}", requestId, IMAGE_MODEL, i);
-                return result;
+                        truncate(prompt, 500), out.url(), costMs, null));
+                log.info("百炼生图成功 requestId={} model={} retry={} costMs={}ms", requestId, IMAGE_MODEL, i, costMs);
+                return out.url();
             } catch (CallNotPermittedException e) {
                 log.warn("百炼熔断开启 requestId={}", requestId);
                 throw new BusinessException(ErrorCodeEnum.CIRCUIT_OPEN, e);
@@ -153,7 +165,8 @@ public class BailianManagerImpl implements BailianManager {
                 log.warn("百炼生图异常 requestId={} retry={}/{}", requestId, i, MAX_RETRY, e);
                 if (i == MAX_RETRY) {
                     callLogDAO.insert(BailianCallLogDO.fail(requestId, "image", IMAGE_MODEL,
-                            truncate(prompt, 500), e.getMessage()));
+                            truncate(prompt, 500), e.getMessage(),
+                            System.currentTimeMillis() - attemptStart));
                     throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT, e);
                 }
                 sleepBackoff(i);
@@ -162,7 +175,7 @@ public class BailianManagerImpl implements BailianManager {
         throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT);
     }
 
-    private String doGenerateImage(String prompt) {
+    private ImageOutcome doGenerateImage(String prompt) {
         ImagePrompt imagePrompt = new ImagePrompt(prompt, OpenAiImageOptions.builder()
                 .model(IMAGE_MODEL)
                 .width(1024)
@@ -174,7 +187,7 @@ public class BailianManagerImpl implements BailianManager {
             throw new BusinessException(ErrorCodeEnum.BAILIAN_API_ERROR);
         }
         String url = response.getResult().getOutput().getUrl();
-        return url != null ? url : "";
+        return new ImageOutcome(url != null ? url : "");
     }
 
     // ==================== VL 合规检测（qwen-vl-plus） ====================
@@ -190,12 +203,15 @@ public class BailianManagerImpl implements BailianManager {
         }
 
         for (int i = 1; i <= MAX_RETRY; i++) {
+            long attemptStart = System.currentTimeMillis();
             try {
-                String result = bailianBreaker.executeSupplier(() -> doDetectCompliance(imageUrl, prompt));
+                TextOutcome out = bailianBreaker.executeSupplier(() -> doDetectCompliance(imageUrl, prompt));
+                long costMs = System.currentTimeMillis() - attemptStart;
                 callLogDAO.insert(BailianCallLogDO.success(requestId, "vl", VL_MODEL,
-                        truncate(prompt, 500), result, null, null));
-                log.info("百炼 VL 检测成功 requestId={} model={} retry={}", requestId, VL_MODEL, i);
-                return result;
+                        truncate(prompt, 500), out.text(), costMs, out.tokenCount()));
+                log.info("百炼 VL 检测成功 requestId={} model={} retry={} costMs={}ms tokens={}",
+                        requestId, VL_MODEL, i, costMs, out.tokenCount());
+                return out.text();
             } catch (CallNotPermittedException e) {
                 log.warn("百炼熔断开启 requestId={}", requestId);
                 throw new BusinessException(ErrorCodeEnum.CIRCUIT_OPEN, e);
@@ -203,7 +219,8 @@ public class BailianManagerImpl implements BailianManager {
                 log.warn("百炼 VL 异常 requestId={} retry={}/{}", requestId, i, MAX_RETRY, e);
                 if (i == MAX_RETRY) {
                     callLogDAO.insert(BailianCallLogDO.fail(requestId, "vl", VL_MODEL,
-                            truncate(prompt, 500), e.getMessage()));
+                            truncate(prompt, 500), e.getMessage(),
+                            System.currentTimeMillis() - attemptStart));
                     throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT, e);
                 }
                 sleepBackoff(i);
@@ -212,7 +229,7 @@ public class BailianManagerImpl implements BailianManager {
         throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT);
     }
 
-    private String doDetectCompliance(String imageUrl, String prompt) {
+    private TextOutcome doDetectCompliance(String imageUrl, String prompt) {
         Media media = new Media(MimeTypeUtils.IMAGE_JPEG, URI.create(imageUrl));
         UserMessage userMessage = UserMessage.builder()
                 .text(prompt)
@@ -226,7 +243,7 @@ public class BailianManagerImpl implements BailianManager {
         if (response == null || response.getResult() == null || response.getResult().getOutput() == null) {
             throw new BusinessException(ErrorCodeEnum.BAILIAN_API_ERROR);
         }
-        return response.getResult().getOutput().getText();
+        return new TextOutcome(response.getResult().getOutput().getText(), usageTokens(response));
     }
 
     // ==================== 视频生成（异步任务，MVP 暂不实现） ====================
@@ -261,6 +278,27 @@ public class BailianManagerImpl implements BailianManager {
     private String truncate(String text, int maxLen) {
         if (text == null) return "";
         return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
+    }
+
+    /** 从 ChatResponse 元数据提取 token 总数（P4 成本追踪）：优先 totalTokens，缺失回退 prompt+completion，全缺/null 返回 null */
+    static Integer usageTokens(ChatResponse response) {
+        try {
+            if (response == null || response.getMetadata() == null) return null;
+            Usage usage = response.getMetadata().getUsage();
+            if (usage == null) return null;
+            Integer total = usage.getTotalTokens();
+            if (total != null && total > 0) return total;
+            Integer prompt = usage.getPromptTokens();
+            Integer completion = usage.getCompletionTokens();
+            if (prompt != null && completion != null && prompt >= 0 && completion >= 0
+                    && (prompt > 0 || completion > 0)) {
+                return prompt + completion;
+            }
+            return null;
+        } catch (RuntimeException e) {
+            log.warn("百炼 usage 解析失败，token_count 置空: {}", e.getMessage());
+            return null;
+        }
     }
 
     private void sleepBackoff(int attempt) {

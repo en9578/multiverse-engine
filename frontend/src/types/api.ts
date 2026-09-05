@@ -8,7 +8,7 @@ export type Dimension = 'TIME' | 'STRATEGY';
 /** '' = 未推演（TIME 宇宙恒为空）；A/B/C/D/F 走 UniverseRater */
 export type Rating = 'A' | 'B' | 'C' | 'D' | 'F' | '';
 export type FreshnessStatus = 'FRESH' | 'STALE' | 'MISSING';
-export type EvidenceSource = 'kb' | 'kb_stale' | 'r1_inferred' | 'frankfurter' | 'tavily' | string;
+export type EvidenceSource = 'kb' | 'kb_stale' | 'r1_inferred' | 'heuristic' | 'frankfurter' | 'tavily' | string;
 
 export interface ApiResult<T> {
   code: number;

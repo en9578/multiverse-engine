@@ -237,6 +237,7 @@ select.select option { background: var(--bg-2); }
 .src-kb { background: rgba(139, 130, 232, 0.16); color: var(--purple-soft); }
 .src-r1 { background: rgba(43, 183, 137, 0.15); color: var(--teal-soft); }
 .src-stale { background: rgba(240, 165, 46, 0.15); color: var(--amber-soft); }
+.src-heu { background: rgba(120, 130, 140, 0.15); color: #9aa5b1; }
 
 /* ---------- 对话 ---------- */
 .chat-box { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow-y: auto; padding-right: 4px; }

@@ -213,6 +213,8 @@ public class MultiverseEngineImpl implements MultiverseEngine {
             reasoning = "无 LLM key：按「策略画像先验 + 5 风暴压力融合」兜底评分（市场事实缺失，规则无法扣分）";
             log.warn("宇宙推演 LLM 输出不可用（RULE_ONLY_FALLBACK + 画像先验）universeId={} finalScore={} prior={}",
                     universe.getId(), Math.round(finalScore), Math.round(prior));
+            // 兜底分完全来自「画像先验+风暴」，不复用规则扣分：清空规则证据，只留退化证据，避免与落库 ruleScore 冲突
+            ruleResult.setEvidences(new ArrayList<>());
             appendDegradedEvidence(ruleResult, prior, avgSurvival, minSurvival, finalScore);
         } else {
             finalScore = LLM_WEIGHT * llmScore + RULE_WEIGHT * ruleScore;
@@ -271,7 +273,7 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                 prior, avgSurvival, minSurvival));
         e.setOutput(String.format("%.1f", score));
         e.setWeight(0.5);
-        e.setSource("kb");
+        e.setSource(EvolutionResultBO.RuleEvidence.SRC_HEURISTIC);
         ruleResult.getEvidences().add(e);
     }
 

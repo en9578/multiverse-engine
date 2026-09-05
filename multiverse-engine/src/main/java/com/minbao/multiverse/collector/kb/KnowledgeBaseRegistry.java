@@ -17,6 +17,7 @@ import java.util.Date;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
 
 /**
@@ -30,6 +31,12 @@ public class KnowledgeBaseRegistry {
 
     private final DataSourceProperties props;
     private final Map<MarketDataCategory, List<KbEntry>> entriesByCategory = new EnumMap<>(MarketDataCategory.class);
+
+    /** 区域父市场成员表（region-aware 匹配用）：market 标 EU 的条目命中任意 EU 成员国 alpha-2（如 DE 任务命中 GPSR） */
+    private static final Map<String, Set<String>> REGION_MEMBERS = Map.of(
+            "EU", Set.of("DE", "FR", "IT", "ES", "NL", "BE", "PL", "AT", "SE",
+                    "IE", "PT", "FI", "DK", "LU", "GR", "HR", "CZ", "EE",
+                    "HU", "LT", "LV", "MT", "SI", "SK", "RO", "BG", "CY"));
 
     public KnowledgeBaseRegistry(DataSourceProperties props) {
         this.props = props;
@@ -106,7 +113,7 @@ public class KnowledgeBaseRegistry {
         }
     }
 
-    /** 按类别 + 市场过滤（market 空/ALL 放行，大小写不敏感）；无匹配返回空列表 */
+    /** 按类别 + 市场过滤（market 空/ALL 放行，EU 等区域父市场命中成员国，大小写不敏感）；无匹配返回空列表 */
     public List<KbEntry> findByCategoryAndMarket(MarketDataCategory category, String market) {
         List<KbEntry> all = entriesByCategory.getOrDefault(category, List.of());
         if (market == null || market.isBlank()) {
@@ -114,10 +121,21 @@ public class KnowledgeBaseRegistry {
         }
         String m = market.trim().toUpperCase();
         return all.stream()
-                .filter(e -> e.getMarket() == null || e.getMarket().isBlank()
-                        || "ALL".equalsIgnoreCase(e.getMarket())
-                        || e.getMarket().equalsIgnoreCase(m))
+                .filter(e -> matchesMarket(e, m))
                 .toList();
+    }
+
+    /** 条目市场是否覆盖目标市场：ALL/空=通用；相等=精确；条目市场为区域父（如 EU）且目标为其成员国=命中 */
+    private boolean matchesMarket(KbEntry e, String targetUpper) {
+        String m = e.getMarket();
+        if (m == null || m.isBlank() || "ALL".equalsIgnoreCase(m)) {
+            return true;
+        }
+        if (m.equalsIgnoreCase(targetUpper)) {
+            return true;
+        }
+        Set<String> members = REGION_MEMBERS.get(m.toUpperCase());
+        return members != null && members.contains(targetUpper);
     }
 
     /** 代表条目：匹配条目中 last_verified 最新的一条，作为该类别 TTL 判定基准 */

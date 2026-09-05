@@ -32,7 +32,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 
 **Application**: AI 跨境商业多元宇宙引擎 — cross-border market simulator that models markets as parallel universes for strategy exploration. Contest entry for Alibaba Cloud Bailian Scene 3 (AI Market Insights).
 
-**Decision: Monolith downgrade (in progress)** — removing the Python/FastAPI/LangGraph dual-service layer and consolidating into a single Java service with Spring AI Alibaba. See `downgrade-migration-plan.md` in the knowledge base. Java 业务逻辑已实现；Python 引擎仍为骨架，待下线。
+**Decision: Monolith downgrade (in progress)** — removing the Python/FastAPI/LangGraph dual-service layer and consolidating into a single Java service with Spring AI OpenAI starter (token-plan 团队 key 仅 OpenAI 兼容协议，非 Alibaba starter). See `downgrade-migration-plan.md` in the knowledge base. Java 业务逻辑已实现；Python 引擎仍为骨架，待下线。
 
 **Java backend** (`multiverse-engine/`, Spring Boot 3.4.4 / Java 21):
 - 4-layer: Controller → Service → Manager → DAO
@@ -46,7 +46,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 - Generation: `MultiverseGenerator` → 3 时间宇宙 + 5 策略宇宙（每个策略宇宙附着 关联反应 / 5 风暴压力测试 / 天气，落 `competitor_reaction` / `stress_test` / `universe_weather` 三表）
 
 **Implemented**:
-- P0 技术栈对齐：`BailianManagerImpl` 用 Spring AI Alibaba 1.1.2.0 重写（`StageEnum` 路由 + 重试/熔断/幂等 + `bailian_call_log` 落库）
+- P0 技术栈对齐：`BailianManagerImpl` 用 Spring AI OpenAI starter 1.0.0 重写（token-plan 兼容基址，`StageEnum` 路由 + 重试/熔断/幂等 + `bailian_call_log` 落库）
 - P1 五维宇宙：`MultiverseGenerator` + 5 个 builder（时间/策略/关联/极端/天气）+ `StressTestEngine` + `R1Enhancer`
 - `MultiverseEngineImpl` 四阶段（collect/generate/explore/settle）+ `RuleEngineImpl`（规则扣分 + evidences `source` 标注）
 - `UniverseRater`（score≥90→A、≥75→B、≥60→C、≥40→D、else F）、`Constants`、`StageEnum`、`TaskStatusEnum`
@@ -91,14 +91,14 @@ Do **not** put markdown docs in the project directory. Key docs in the knowledge
 
 按设计文档分阶段推进（P0 → P1 → P2 → P3 → P4）。P0+P1 已提交（commit ac06933）：
 
-- **P0 技术栈对齐（完成）**：`dashscope-sdk-java` → Spring AI Alibaba 1.1.2.0，`StageEnum` 模型路由修正，`BailianManagerImpl` 重写。
+- **P0 技术栈对齐（完成）**：`dashscope-sdk-java` → Spring AI OpenAI starter 1.0.0（token-plan 兼容基址），`StageEnum` 模型路由修正，`BailianManagerImpl` 重写。
 - **P1 五维宇宙（完成）**：`generateUniverses` 重构为 3 时间宇宙 + 5 策略宇宙（每策略宇宙附着 关联/极端/天气），新增 3 张表 + 4 枚举，5 个 builder + `StressTestEngine` + `R1Enhancer` + `MultiverseGenerator` 实现。
 - **LLM 全流程 smoke test（待做）**：唯一阻塞是 token-plan 配额（2026-08-24 实测 429 insufficient_quota）。协议切换已验证接线正确（错误从 dashscope 401 InvalidApiKey 变为 token-plan 429，认证已通过、仅剩配额）；Demo 已加 **key 短路**（占位/空 key 直接抛 `LLM_DEGRADED`，跳过重试退避），充值配 key 后即可真 smoke。
-- **P2 可解释推演（待做）**：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、修正 `source: "kb"` 标签（当前为无 KB 的启发式规则）。
+- **P2 可解释推演（规则层完成 2026-09，交叉验证待做）**：修正 `source` 真实性 —— 新增 `heuristic` 标签，启发式规则不再冒充 kb；`RuleEngineImpl` 新增 `RULE_COMPLIANCE_KB` 真读 policy_kb、逐条引用 KB 条目 id，扣分 = severity×时效权重（kb 1.0 / kb_stale 0.5）；KB 政策市场匹配改 region-aware（`market: EU` 的 GPSR 现命中 DE）；无 LLM 降级证据链清空只留 `RULE_DEGRADED_PRIOR(heuristic)` 保持自洽。仍待做：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、pain_point/competitor_strategy KB 反哺规则（无产品品类字段，关键词匹配不可靠）。
 - **P3 数据源接入（完成数据源+T+展示，LLM-Wiki 待做）**：`DataCollector` 先于 LLM 采集真实数据源并落库 `market_data`（一行=task_id+category，幂等 upsert）。frankfurter 真实汇率（免费无 key，`MarketCurrency` 由 targetMarket 推导货币，读超时 8s）；KB 三类 YAML（`resources/kb/*.yml`，SnakeYAML 加载 + TTL 30/90/90 天）；TTL 三层 `DataFreshnessService`（Fresh 1.0 / Stale 0.5x / Missing 纯 R1，`source` 标注 kb/kb_stale/r1_inferred）；Tavily 降级 stub（预留 `TAVILY_API_KEY`，未配置时 KB 兜底并落库 MISSING 行）。`collectData` 改为「先 DataCollector 后 LLM」，LLM 失败降级真实数据源输出不抛异常（429 下全链路仍跑通）。展示端点 `GET /api/v1/tasks/{id}/collected-data` 返回每类数据的来源+last_verified+Fresh/Stale/Missing+权重。
-- **P4 Token 追踪（待做）**：填充 `bailian_call_log.token_count`。
+- **P4 Token 追踪（完成 2026-09）**：`BailianManagerImpl` 文本/VL 成功行填充 `token_count`（ChatResponse usage：total 优先、缺失回退 prompt+completion）+ `cost_ms`（实测耗时）；生图走 OpenAI 图片接口无 token 置空；失败行记录耗时（`fail` 重载带 costMs）。
 - **复赛 Demo（完成，commit 0111f83 / eca5797 / 44ab13e）**：M1–M7 —— 前端四页面（Input/Run/StarMap/Detail/Decision）+ 一体打包（`build:static` 产物提交进 static）；后端 detail 富版聚合 `stressTests`(5 风暴)/`weather`/`competitorReactions`；无 LLM 时按「策略画像先验(0.5)+5 风暴平均(0.3)+最差风暴(0.2)」差异化评分（A–D，`RULE_DEGRADED_PRIOR` 证据）；key 短路后任务 ~2s 即 DONE。运行/口径说明见知识库 `demo-run-guide` / `tech-stack-and-models`。
 
-**已知偏差**：`RuleEngineImpl` / `EntanglementBuilder` 的 `source: "kb"` 目前是无 KB 的启发式规则，P2 一并修正。P3 KB 政策市场匹配为精确匹配（`market: EU` 的 GPSR 不命中 DE），LLM-Wiki 召回层未做。
+**已知偏差**：~~启发式规则 `source:"kb"` 造假~~（已修正 2026-09：启发式标 `heuristic`，KB 政策规则标 `kb/kb_stale` 并引用 KB 条目 id）；~~EU 政策不命中 DE~~（已修正 region-aware）；`RULE_COMPLIANCE_KB` 现按市场级注册负担基线扣分（policy_kb 无产品品类字段，品类关键词过滤留后续）；pain_point / competitor_strategy KB 未反哺规则；LLM-Wiki 召回层未做。
 
 **仓库交付**：`origin` = GitHub `en9578/multiverse-engine`（main 已推送，含 P0→P3 + 复赛 Demo；复赛要求的 GitCode 镜像地址若建，从该 GitHub 推即可）。`bailian_test_output/` 与复赛提交 docx 模板**不入库**（保持 untracked）。

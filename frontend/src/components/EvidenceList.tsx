@@ -5,16 +5,18 @@ function srcCls(source: string): string {
   if (source === 'kb') return 'src-tag src-kb';
   if (source === 'kb_stale') return 'src-tag src-stale';
   if (source === 'r1_inferred') return 'src-tag src-r1';
+  if (source === 'heuristic') return 'src-tag src-heu';
   return 'src-tag src-kb';
 }
 function srcText(source: string): string {
   if (source === 'kb') return 'KB 规则';
   if (source === 'kb_stale') return 'KB 过期';
   if (source === 'r1_inferred') return '模型推断';
+  if (source === 'heuristic') return '启发式规则';
   return source;
 }
 
-/** 可解释推演证据链（每条：ruleId + input/output + 来源徽标，kb紫/过期琥珀/模型推断青） */
+/** 可解释推演证据链（每条：ruleId + input/output + 来源徽标，kb紫/过期琥珀/模型推断青/启发式灰） */
 export default function EvidenceList({ evidences }: { evidences: RuleEvidence[] | null }) {
   if (!evidences || evidences.length === 0) {
     return <EmptyState text="该宇宙尚无推演证据（未推演或数据缺失）。" />;

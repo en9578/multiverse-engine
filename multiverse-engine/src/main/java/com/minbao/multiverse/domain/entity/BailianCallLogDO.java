@@ -42,4 +42,12 @@ public class BailianCallLogDO extends BaseDO {
         log.setTraceId("");
         return log;
     }
+
+    /** 失败落库带实测耗时（重试退避后终局失败用） */
+    public static BailianCallLogDO fail(String requestId, String callType, String model,
+                                        String inputPrompt, String errorMsg, Long costMs) {
+        BailianCallLogDO log = fail(requestId, callType, model, inputPrompt, errorMsg);
+        log.costMs = costMs;
+        return log;
+    }
 }

@@ -1,5 +1,10 @@
 package com.minbao.multiverse.manager.impl;
 
+import com.minbao.multiverse.collector.DataFreshnessService;
+import com.minbao.multiverse.collector.domain.FreshnessInfo;
+import com.minbao.multiverse.collector.domain.MarketDataCategory;
+import com.minbao.multiverse.collector.kb.KbEntry;
+import com.minbao.multiverse.collector.kb.KnowledgeBaseRegistry;
 import com.minbao.multiverse.common.JsonUtil;
 import com.minbao.multiverse.domain.bo.CollectedDataBO;
 import com.minbao.multiverse.domain.bo.EvolutionResultBO;
@@ -12,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.Resource;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +37,14 @@ public class RuleEngineImpl implements RuleEngine {
 
     @Resource
     private UniverseRater universeRater;
+
+    /** P3 KB 注册中心（启动加载 kb/*.yml），RULE_COMPLIANCE_KB 真读 policy_kb */
+    @Resource
+    private KnowledgeBaseRegistry kbRegistry;
+
+    /** TTL 时效判定，KB 规则扣分按 freshness 权重（kb 1.0 / kb_stale 0.5 / missing 不入账）缩放 */
+    @Resource
+    private DataFreshnessService freshnessService;
 
     @Override
     public double strategyPrior(UniverseBO universe) {
@@ -63,6 +77,7 @@ public class RuleEngineImpl implements RuleEngine {
         score += applyCompetitionRule(data, evidences);
         score += applyReviewRule(data, evidences);
         score += applyPriceRule(universe, data, evidences);
+        score += applyKbPolicyRule(universe, evidences);
 
         score = Math.max(5, Math.min(99, score));
         result.setSurvivalRate(Math.round(score) / 100.0);
@@ -97,13 +112,13 @@ public class RuleEngineImpl implements RuleEngine {
         return deduction;
     }
 
-    /** 评论情绪：sentiment <0.4 扣 20，<0.6 扣 10 */
+    /** 评论情绪：sentiment <0.4 扣 20，<0.6 扣 10（缺失不扣分，input 标注缺省） */
     private double applyReviewRule(CollectedDataBO data, List<EvolutionResultBO.RuleEvidence> evidences) {
-        Object sentiment = data.getReviewData() != null ? data.getReviewData().get("sentiment") : null;
-        double s = sentiment instanceof Number ? ((Number) sentiment).doubleValue() : 0.7;
+        boolean has = data.getReviewData() != null && data.getReviewData().get("sentiment") instanceof Number;
+        double s = has ? ((Number) data.getReviewData().get("sentiment")).doubleValue() : 0.7;
         double deduction = s < 0.4 ? -20 : (s < 0.6 ? -10 : 0);
-        evidences.add(evidence("RULE_REVIEW_SENTIMENT",
-                "sentiment=" + s, deduction, 0.9));
+        String input = has ? String.format("sentiment=%.2f", s) : "sentiment=缺失(缺省0.7,不扣分)";
+        evidences.add(evidence("RULE_REVIEW_SENTIMENT", input, deduction, 0.9));
         return deduction;
     }
 
@@ -130,6 +145,46 @@ public class RuleEngineImpl implements RuleEngine {
         return deduction;
     }
 
+    /** KB 政策合规基线（source=kb/kb_stale，真读 policy_kb）：区域匹配条目按 severity×时效权重扣分，evidence 引用 KB 条目 id。
+     *  政策条目无产品品类字段，故为市场级注册/合规负担基线，品类关键词过滤留后续（见 CLAUDE.md 已知偏差）。 */
+    private double applyKbPolicyRule(UniverseBO universe, List<EvolutionResultBO.RuleEvidence> evidences) {
+        String market = universe.getTargetMarket();
+        if (market == null || market.isBlank()) {
+            return 0;
+        }
+        List<KbEntry> policies = kbRegistry.findByCategoryAndMarket(MarketDataCategory.POLICY, market);
+        if (policies.isEmpty()) {
+            return 0;
+        }
+        LocalDate today = LocalDate.now();
+        double deduction = 0;
+        for (KbEntry e : policies) {
+            int ttl = e.getFreshnessTtlDays() == null ? 90 : e.getFreshnessTtlDays();
+            FreshnessInfo fi = freshnessService.evaluate(e.getLastVerified(), ttl, today);
+            if (fi.weight() <= 0) {
+                continue; // MISSING（last_verified 缺失）：不入账不扣分，避免编造
+            }
+            double base = switch (e.getSeverity() == null ? "" : e.getSeverity().toLowerCase()) {
+                case "high" -> 8;
+                case "medium" -> 4;
+                case "low" -> 2;
+                default -> 0;
+            };
+            if (base == 0) {
+                continue;
+            }
+            double contrib = -(base * fi.weight());
+            deduction += contrib;
+            String input = String.format("KB政策=%s(%s) market=%s->%s severity=%s freshness=%s(weight=%.1f)",
+                    e.getId(), e.getName(),
+                    e.getMarket() == null ? "ALL" : e.getMarket(),
+                    market, e.getSeverity(), fi.status().name(), fi.weight());
+            evidences.add(evidence("RULE_COMPLIANCE_KB", input,
+                    Math.round(contrib * 10) / 10.0, fi.weight(), fi.source()));
+        }
+        return deduction;
+    }
+
     /** 从策略包 JSON 中尽力提取 price 字段（策略包由 LLM 生成，字段可能缺失） */
     private Double extractPrice(String strategyPackage) {
         Map<String, Object> pkg = JsonUtil.parseObject(strategyPackage);
@@ -152,13 +207,18 @@ public class RuleEngineImpl implements RuleEngine {
 
     private String str(Object v) { return v == null ? "" : v.toString(); }
 
+    /** 启发式规则证据（默认 source=heuristic：确定性规则/无 KB 依据，不再冒充 kb） */
     private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, double output, double weight) {
+        return evidence(ruleId, input, output, weight, EvolutionResultBO.RuleEvidence.SRC_HEURISTIC);
+    }
+
+    private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, double output, double weight, String source) {
         EvolutionResultBO.RuleEvidence e = new EvolutionResultBO.RuleEvidence();
         e.setRuleId(ruleId);
         e.setInput(input);
         e.setOutput(String.valueOf(output));
         e.setWeight(weight);
-        e.setSource("kb");
+        e.setSource(source);
         return e;
     }
 }
