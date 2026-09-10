@@ -32,7 +32,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 
 **Application**: AI 跨境商业多元宇宙引擎 — cross-border market simulator that models markets as parallel universes for strategy exploration. Contest entry for Alibaba Cloud Bailian Scene 3 (AI Market Insights).
 
-**Decision: Monolith downgrade (in progress)** — removing the Python/FastAPI/LangGraph dual-service layer and consolidating into a single Java service with Spring AI OpenAI starter (token-plan 团队 key 仅 OpenAI 兼容协议，非 Alibaba starter). See `downgrade-migration-plan.md` in the knowledge base. Java 业务逻辑已实现；Python 引擎仍为骨架，待下线。
+**Decision: Monolith downgrade (in progress)** — removing the Python/FastAPI/LangGraph dual-service layer and consolidating into a single Java service with Spring AI OpenAI starter (ws- 工作空间 key 仅 OpenAI 兼容协议，非 Alibaba starter). See `downgrade-migration-plan.md` in the knowledge base. Java 业务逻辑已实现；Python 引擎仍为骨架，待下线。
 
 **Java backend** (`multiverse-engine/`, Spring Boot 3.4.4 / Java 21):
 - 4-layer: Controller → Service → Manager → DAO
@@ -46,7 +46,7 @@ python bailian_api_test.py   # requires DASHSCOPE_API_KEY env var
 - Generation: `MultiverseGenerator` → 3 时间宇宙 + 5 策略宇宙（每个策略宇宙附着 关联反应 / 5 风暴压力测试 / 天气，落 `competitor_reaction` / `stress_test` / `universe_weather` 三表）
 
 **Implemented**:
-- P0 技术栈对齐：`BailianManagerImpl` 用 Spring AI OpenAI starter 1.0.0 重写（token-plan 兼容基址，`StageEnum` 路由 + 重试/熔断/幂等 + `bailian_call_log` 落库）
+- P0 技术栈对齐：`BailianManagerImpl` 用 Spring AI OpenAI starter 1.0.0 重写（ws- 工作空间兼容基址，`StageEnum` 路由 + 重试/熔断/幂等 + `bailian_call_log` 落库）
 - P1 五维宇宙：`MultiverseGenerator` + 5 个 builder（时间/策略/关联/极端/天气）+ `StressTestEngine` + `R1Enhancer`
 - `MultiverseEngineImpl` 四阶段（collect/generate/explore/settle）+ `RuleEngineImpl`（规则扣分 + evidences `source` 标注）
 - `UniverseRater`（score≥90→A、≥75→B、≥60→C、≥40→D、else F）、`Constants`、`StageEnum`、`TaskStatusEnum`
@@ -79,26 +79,27 @@ Do **not** put markdown docs in the project directory. Key docs in the knowledge
 
 ## Key Technical Decisions
 
-1. **Explainable reasoning, not black-box**: `RuleEngine` outputs `evidences` with `source: kb | r1_inferred` weight tags. deepseek-v4-pro Grounding (must cite KB data), qwen3.8-max cross-validation (temperature=0.0), direction-only prediction (no absolute values), backtesting >80% accuracy.
+1. **Explainable reasoning, not black-box**: `RuleEngine` outputs `evidences` with `source` 四值词表 weight tags（`kb` 全权重 / `kb_stale` 0.5x / `r1_inferred` 模型推断 / `heuristic` 启发式无 KB 依据）。deepseek-v4-pro Grounding (must cite KB data), qwen3.8-max cross-validation (temperature=0.0), direction-only prediction (no absolute values), backtesting >80% accuracy.
 2. **Agent orchestration without LangGraph**: `TaskStatusEnum` state machine + `@Async` + `CompletableFuture.allOf` for universe fan-out (3 time + 5 strategy). `last_completed_stage` field + `/retry` endpoint for checkpoint recovery. `updateStatus` before SETTLING for human-in-the-loop.
 3. **Model routing**: `StageEnum` → Bailian model: COLLECTING→qwen3.7-plus, GENERATING/EXPLORING→deepseek-v4-pro, SETTLING→qwen3.8-max；生图→wan2.7-image-pro、VL→qwen-vl-plus、向量化→text-embedding-v3（非文本模型走 `BailianManager` 独立方法，不经 `StageEnum`）。
-   **API 端点（重要）**: 团队 key 为 token-plan 团队标准版，仅支持 **OpenAI 兼容协议**；基址由 `spring.ai.openai.base-url = https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode` 配置（**不含 `/v1`**，Spring AI OpenAI starter 会自动拼接 `/v1/chat/completions`）。标准 `dashscope.aliyuncs.com` 对该 key 返回 401。`BailianManagerImpl` 走 Spring AI OpenAI starter 指向该基地址，key 通过 `DASHSCOPE_API_KEY` 环境变量注入（占位 `sk-dev-placeholder`/空白 → 方法入口短路抛 `LLM_DEGRADED`），勿写入代码/配置文件。
+   **API 端点（重要）**: 团队 key 为 ws- 工作空间专属部署 key（`sk-ws-` 开头），仅支持 **OpenAI 兼容协议**；基址由 `spring.ai.openai.base-url = ${BAILIAN_BASE_URL:https://ws-77ukym0vhwm7h7qd.cn-beijing.maas.aliyuncs.com/compatible-mode}` 配置（**不含 `/v1`**，Spring AI OpenAI starter 会自动拼接 `/v1/chat/completions`）。注意：工作空间控制台给的原生基址 `/api/v1` 是 DashScope 原生协议（`/api/v1/chat/completions` 404），必须用 `/compatible-mode` 前缀；配额耗尽报 `403 AccessDenied.Unpurchased`。`BailianManagerImpl` 走 Spring AI OpenAI starter 指向该基地址，key 通过 `DASHSCOPE_API_KEY` 环境变量注入（占位 `sk-dev-placeholder`/空白 → 方法入口短路抛 `LLM_DEGRADED`），勿写入代码/配置文件。
 4. **Token budget**: ~47 Credits per task (V4-pro 5 universes ≈ 35), 25,000 Credits package ≈ 530+ tasks. Graded reasoning (core=V4-pro, secondary=rule/qwen3.7-plus), idempotency cache, context compression, budget cap with auto-degrade.
 5. **Data freshness**: Tavily + frankfurter + KB dual-source, TTL tiers (Fresh/Stale 0.5x/Missing), `last_verified` visible. Keepa API (€49/mo) designed but disabled for Demo — price history data from manual KB entry.
 6. **Recall layer (LLM-Wiki)**: Four-way recall cut to single LLM-Wiki. Wiki stores facts only (what happened), not inferences (no confidence scores). R1 reasons independently from raw facts. Scene-filtered pre-classification, no runtime retrieval overhead. Updated incrementally with data collection.
 
 ## Implementation Progress
 
-按设计文档分阶段推进（P0 → P1 → P2 → P3 → P4）。P0+P1 已提交（commit ac06933）：
+按设计文档分阶段推进（P0 → P1 → P2 → P3 → P4）。**P0–P4 + 复赛 Demo 已全部落地并推送，HEAD `bafd64d`**（里程碑：ac06933 P0+P1 → 42fd30b P3 → 0111f83·eca5797·44ab13e·7190918 复赛 Demo → bafd64d P2 规则层 + P4 + 测试）：
 
-- **P0 技术栈对齐（完成）**：`dashscope-sdk-java` → Spring AI OpenAI starter 1.0.0（token-plan 兼容基址），`StageEnum` 模型路由修正，`BailianManagerImpl` 重写。
+- **P0 技术栈对齐（完成）**：`dashscope-sdk-java` → Spring AI OpenAI starter 1.0.0（ws- 工作空间兼容基址），`StageEnum` 模型路由修正，`BailianManagerImpl` 重写。
 - **P1 五维宇宙（完成）**：`generateUniverses` 重构为 3 时间宇宙 + 5 策略宇宙（每策略宇宙附着 关联/极端/天气），新增 3 张表 + 4 枚举，5 个 builder + `StressTestEngine` + `R1Enhancer` + `MultiverseGenerator` 实现。
-- **LLM 全流程 smoke test（待做）**：唯一阻塞是 token-plan 配额（2026-08-24 实测 429 insufficient_quota）。协议切换已验证接线正确（错误从 dashscope 401 InvalidApiKey 变为 token-plan 429，认证已通过、仅剩配额）；Demo 已加 **key 短路**（占位/空 key 直接抛 `LLM_DEGRADED`，跳过重试退避），充值配 key 后即可真 smoke。
-- **P2 可解释推演（规则层完成 2026-09，交叉验证待做）**：修正 `source` 真实性 —— 新增 `heuristic` 标签，启发式规则不再冒充 kb；`RuleEngineImpl` 新增 `RULE_COMPLIANCE_KB` 真读 policy_kb、逐条引用 KB 条目 id，扣分 = severity×时效权重（kb 1.0 / kb_stale 0.5）；KB 政策市场匹配改 region-aware（`market: EU` 的 GPSR 现命中 DE）；无 LLM 降级证据链清空只留 `RULE_DEGRADED_PRIOR(heuristic)` 保持自洽。仍待做：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、pain_point/competitor_strategy KB 反哺规则（无产品品类字段，关键词匹配不可靠）。
+- **LLM 全流程 smoke test（完成 2026-09-10）**：切到团队 ws- 工作空间专属部署端点（`sk-ws-` key）后全链路真 key 冒烟跑通 —— `COLLECTING→GENERATING→EXPLORING→SETTLING→DONE`，qwen3.7-plus / deepseek-v4-pro / qwen3.8-max / qwen-vl-plus 四模型全通，宇宙详情 `llmScore` 非空 + LLM reasoning + `kb_stale`/`heuristic` 证据链。期间修复 requestId 碰撞 bug（并行 fan-out 下 `System.currentTimeMillis()` 撞唯一索引 → 改用 `AtomicLong` 序号）。配额耗尽报 `403 AccessDenied.Unpurchased`（充值后恢复）；生图 `/compatible-mode/v1/images/generations` 仍 400（MVP 主链路不涉及）。
+- **P2 可解释推演（规则层完成 2026-09，commit bafd64d；交叉验证待做）**：修正 `source` 真实性 —— 新增 `heuristic` 标签，启发式规则不再冒充 kb；`RuleEngineImpl` 新增 `RULE_COMPLIANCE_KB` 真读 policy_kb、逐条引用 KB 条目 id，扣分 = severity×时效权重（kb 1.0 / kb_stale 0.5）；KB 政策市场匹配改 region-aware（`market: EU` 的 GPSR 现命中 DE）；无 LLM 降级证据链清空只留 `RULE_DEGRADED_PRIOR(heuristic)` 保持自洽。仍待做：qwen3.8-max 交叉验证、deepseek-v4-pro Grounding 引用 KB、pain_point/competitor_strategy KB 反哺规则（无产品品类字段，关键词匹配不可靠）。
 - **P3 数据源接入（完成数据源+T+展示，LLM-Wiki 待做）**：`DataCollector` 先于 LLM 采集真实数据源并落库 `market_data`（一行=task_id+category，幂等 upsert）。frankfurter 真实汇率（免费无 key，`MarketCurrency` 由 targetMarket 推导货币，读超时 8s）；KB 三类 YAML（`resources/kb/*.yml`，SnakeYAML 加载 + TTL 30/90/90 天）；TTL 三层 `DataFreshnessService`（Fresh 1.0 / Stale 0.5x / Missing 纯 R1，`source` 标注 kb/kb_stale/r1_inferred）；Tavily 降级 stub（预留 `TAVILY_API_KEY`，未配置时 KB 兜底并落库 MISSING 行）。`collectData` 改为「先 DataCollector 后 LLM」，LLM 失败降级真实数据源输出不抛异常（429 下全链路仍跑通）。展示端点 `GET /api/v1/tasks/{id}/collected-data` 返回每类数据的来源+last_verified+Fresh/Stale/Missing+权重。
-- **P4 Token 追踪（完成 2026-09）**：`BailianManagerImpl` 文本/VL 成功行填充 `token_count`（ChatResponse usage：total 优先、缺失回退 prompt+completion）+ `cost_ms`（实测耗时）；生图走 OpenAI 图片接口无 token 置空；失败行记录耗时（`fail` 重载带 costMs）。
+- **P4 Token 追踪（完成 2026-09，commit bafd64d）**：`BailianManagerImpl` 文本/VL 成功行填充 `token_count`（ChatResponse usage：total 优先、缺失回退 prompt+completion）+ `cost_ms`（实测耗时）；生图走 OpenAI 图片接口无 token 置空；失败行记录耗时（`fail` 重载带 costMs）。接线由 `usageTokens` 静态助手 + JUnit 覆盖；**真实落库观察待配额恢复后真 key 冒烟**（见下）。
+- **确定性 JUnit（新增 2026-09-05，commit bafd64d）**：`collector/kb/KnowledgeBaseRegistryTest`（EU⊃DE 区域匹配/representative）、`manager/impl/RuleEngineImplTest`（RULE_COMPLIANCE_KB 引用 PLCY-003、启发式 source=heuristic）、`manager/impl/BailianManagerImplUsageTest`（usage→token_count 四例）。`mvn test` **9 例全绿**；E2E 降级路径复核 POLICY count=3（region 修复实证）、5 宇宙 A–D 差异化、STRATEGY detail 证据链单行 `RULE_DEGRADED_PRIOR(heuristic)` 自洽、降级评分零回归。
 - **复赛 Demo（完成，commit 0111f83 / eca5797 / 44ab13e）**：M1–M7 —— 前端四页面（Input/Run/StarMap/Detail/Decision）+ 一体打包（`build:static` 产物提交进 static）；后端 detail 富版聚合 `stressTests`(5 风暴)/`weather`/`competitorReactions`；无 LLM 时按「策略画像先验(0.5)+5 风暴平均(0.3)+最差风暴(0.2)」差异化评分（A–D，`RULE_DEGRADED_PRIOR` 证据）；key 短路后任务 ~2s 即 DONE。运行/口径说明见知识库 `demo-run-guide` / `tech-stack-and-models`。
 
-**已知偏差**：~~启发式规则 `source:"kb"` 造假~~（已修正 2026-09：启发式标 `heuristic`，KB 政策规则标 `kb/kb_stale` 并引用 KB 条目 id）；~~EU 政策不命中 DE~~（已修正 region-aware）；`RULE_COMPLIANCE_KB` 现按市场级注册负担基线扣分（policy_kb 无产品品类字段，品类关键词过滤留后续）；pain_point / competitor_strategy KB 未反哺规则；LLM-Wiki 召回层未做。
+**已知偏差**：~~启发式规则 `source:"kb"` 造假~~（已修正 2026-09：启发式标 `heuristic`，KB 政策规则标 `kb/kb_stale` 并引用 KB 条目 id）；~~EU 政策不命中 DE~~（已修正 region-aware）；~~`demo-run-guide.md`/`tech-stack-and-models.md` source=kb 口径未同步~~（已修正 2026-09-06：KB 文档已同步四值词表 + 徽标四色 + 降级单条 `RULE_DEGRADED_PRIOR(heuristic)`；README.md:38 已改「Spring AI OpenAI starter 1.0.0」）；`RULE_COMPLIANCE_KB` 现按市场级注册负担基线扣分（policy_kb 无产品品类字段，品类关键词过滤留后续）；pain_point / competitor_strategy KB 未反哺规则；LLM-Wiki 召回层未做。
 
-**仓库交付**：`origin` = GitHub `en9578/multiverse-engine`（main 已推送，含 P0→P3 + 复赛 Demo；复赛要求的 GitCode 镜像地址若建，从该 GitHub 推即可）。`bailian_test_output/` 与复赛提交 docx 模板**不入库**（保持 untracked）。
+**仓库交付**：`origin` = GitHub `en9578/multiverse-engine`，main 已推送至 `bafd64d`（P0–P4 + 复赛 Demo + 3 个 JUnit），与 origin/main **0 ahead/0 behind**。2026-09-05 起 GitHub **直连推送**（已移除 repo-local `http.proxy=127.0.0.1:7897`，github.com 当前直连可达）。复赛要求的 **GitCode 镜像仍未建**（gitcode.com 从本机 HTTPS 直连超时，需网络可用时在 gitcode.com 建空仓库后从 origin 推送）。`bailian_test_output/` 与复赛提交 docx 模板**不入库**（保持 untracked）。复赛提交物（9/15 截止：PDF/演示视频/线上 demo 或 zip/GitCode）尚未制作。

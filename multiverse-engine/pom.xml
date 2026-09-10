@@ -94,7 +94,7 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-        <!-- 百炼接入：token-plan 团队 key 仅支持 OpenAI 兼容协议，故用 Spring AI OpenAI starter 指向 token-plan 基地址 -->
+        <!-- 百炼接入：ws- 工作空间 key 仅支持 OpenAI 兼容协议，故用 Spring AI OpenAI starter 指向工作空间基地址 -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>

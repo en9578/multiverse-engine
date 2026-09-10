@@ -29,10 +29,11 @@ import org.springframework.util.MimeTypeUtils;
 import jakarta.annotation.Resource;
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 百炼统一接入实现（设计 §3.2 / §14.3）-- OpenAI 兼容协议版。
- * token-plan 团队 key 仅支持 OpenAI 兼容协议，基地址见 application.yml `spring.ai.openai.base-url`；
+ * ws- 工作空间 key 仅支持 OpenAI 兼容协议，基地址见 application.yml `spring.ai.openai.base-url`；
  * 文本生成按 StageEnum 路由模型；生图 / 视觉 / 向量化走独立模型常量。
  * 每个方法含：幂等检查 → 熔断包装 → 重试(3次指数退避) → 落库记录（bailian_call_log）。
  */
@@ -48,6 +49,9 @@ public class BailianManagerImpl implements BailianManager {
     /** application.yml 缺省占位 key（${DASHSCOPE_API_KEY:sk-dev-placeholder}）；等于占位/空白视为未配置 */
     private static final String PLACEHOLDER_API_KEY = "sk-dev-placeholder";
 
+    /** requestId 唯一性序号：并行 fan-out 下 System.currentTimeMillis() 会碰撞唯一索引 uk_req_type */
+    private static final AtomicLong REQUEST_ID_SEQ = new AtomicLong();
+
     /** do* 私有调用结果（把 ChatResponse 的 usage 带出到 wrapper，供 bailian_call_log 落 token_count） */
     private record TextOutcome(String text, Integer tokenCount) {}
     private record ImageOutcome(String url) {}
@@ -61,7 +65,7 @@ public class BailianManagerImpl implements BailianManager {
     @Resource
     private CircuitBreaker bailianBreaker;
 
-    /** Spring AI OpenAI starter 自动装配（指向 token-plan 兼容基地址） */
+    /** Spring AI OpenAI starter 自动装配（指向 ws- 工作空间兼容基地址） */
     @Resource
     private ChatModel chatModel;
 
@@ -140,7 +144,7 @@ public class BailianManagerImpl implements BailianManager {
 
     @Override
     public String generateImage(String prompt) {
-        String requestId = "img-" + System.currentTimeMillis();
+        String requestId = "img-" + System.currentTimeMillis() + "-" + REQUEST_ID_SEQ.incrementAndGet();
 
         BailianCallLogDO cached = callLogDAO.selectByRequestId(requestId);
         if (cached != null && Boolean.TRUE.equals(cached.getSuccess())) {
@@ -194,7 +198,7 @@ public class BailianManagerImpl implements BailianManager {
 
     @Override
     public String detectCompliance(String imageUrl, String prompt) {
-        String requestId = "vl-" + System.currentTimeMillis();
+        String requestId = "vl-" + System.currentTimeMillis() + "-" + REQUEST_ID_SEQ.incrementAndGet();
 
         BailianCallLogDO cached = callLogDAO.selectByRequestId(requestId);
         if (cached != null && Boolean.TRUE.equals(cached.getSuccess())) {
@@ -265,7 +269,7 @@ public class BailianManagerImpl implements BailianManager {
     // ==================== 内部工具方法 ====================
 
     private String generateRequestId(StageEnum stage) {
-        return stage.name() + "-" + System.currentTimeMillis();
+        return stage.name() + "-" + System.currentTimeMillis() + "-" + REQUEST_ID_SEQ.incrementAndGet();
     }
 
     private String buildPrompt(String systemPrompt, String userPrompt) {

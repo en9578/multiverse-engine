@@ -12,7 +12,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev     # 前置：JDK 21 + Maven
 打开 **http://localhost:8080** 即整站（React 前端已打包进 Spring Boot static，H2 内存库免配置）。Demo 流程：新建推演 → 阶段灯 + 数据新鲜度面板 → 星图（5 策略宇宙 A–D 评级 + 3 时间宇宙）→ 点卡看 **5 风暴压力雷达 / 市场气象 / 可解释证据链** → 穿越向导对话 → 定居决策并确认。
 
 - **零配置即可跑**：未设百炼 key 时引擎自动降级（真实汇率 + 知识库规则 + 压力测试），每处标注来源，**不伪造模型已生成**；
-- **全功能需 key**：`export DASHSCOPE_API_KEY=<百炼团队 key>` 后重启。key 仅支持 OpenAI 兼容协议（token-plan 基地址），详见下文「模型调用」；
+- **全功能需 key**：`export DASHSCOPE_API_KEY=<百炼工作空间 key>` 后重启。key 仅支持 OpenAI 兼容协议（ws- 工作空间专属部署基地址），详见下文「模型调用」；
 - 改前端：`cd frontend && npm run build:static`（产物提交进 static，评审机仍单命令起）。
 - 完整说明见知识库 `demo-run-guide.md` / `tech-stack-and-models.md`。
 
@@ -35,7 +35,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=dev     # 前置：JDK 21 + Maven
 | 层 | 技术 | 说明 |
 |----|------|------|
 | 后端 | Spring Boot 3.4.4 / Java 21 / MyBatis / Resilience4j | 4 层单体：Controller→Service→Manager→DAO；状态机编排 + @Async 宇宙扇出 |
-| 模型接入 | Spring AI Alibaba（OpenAI 兼容协议 → 百炼 token-plan） | `ChatModel`/`ImageModel`，key 仅环境变量注入；详见下方「模型调用」 |
+| 模型接入 | Spring AI OpenAI starter 1.0.0（OpenAI 兼容协议 → 百炼 ws- 工作空间专属部署） | `ChatModel`/`ImageModel`，key 仅环境变量注入；详见下方「模型调用」 |
 | 数据库 | H2(dev) / MySQL(prod)，Flyway 13 迁移 | 13 表 + 11 MyBatis XML |
 | 数据源 | frankfurter 真实汇率 + 本地 KB YAML + Tavily(预留) | TTL 新鲜度分层 Fresh/Stale/Missing，last_verified 对用户可见 |
 | 前端 | React 18 + Vite + TS（HashRouter） | 构建产物提交进 Spring Boot static → 单命令整站；无图表库，雷达自绘 SVG |

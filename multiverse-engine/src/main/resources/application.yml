@@ -23,8 +23,8 @@ spring:
     encoding: UTF-8
   ai:
     openai:
-      # token-plan 团队 key 仅支持 OpenAI 兼容协议（标准 dashscope.aliyuncs.com 对该 key 返回 401）
-      base-url: https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode
+      # 百炼工作空间（ws-）专属部署端点，OpenAI 兼容协议。/compatible-mode 不含 /v1，starter 自动拼 /v1/chat/completions
+      base-url: ${BAILIAN_BASE_URL:https://ws-77ukym0vhwm7h7qd.cn-beijing.maas.aliyuncs.com/compatible-mode}
       chat:
         completions-path: /v1/chat/completions
       # Demo 缺省占位 key；正式运行须设置 DASHSCOPE_API_KEY 环境变量
