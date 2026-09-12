@@ -76,7 +76,12 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                  "compliance":[{"risk":"风险名","level":"high|medium|low","detail":"一句话说明"}],
                  "reviews":{"sentiment":0.62,"topComplaints":["投诉点1","投诉点2"],
                             "defects":[{"name":"缺陷名","frequency":"high|medium|low","severity":"critical|major|minor","solution":"改进建议"}]}}
-                要求：competitors 给 3-8 个；compliance 给 2-4 条；sentiment 为 0-1 的差评率反向指标（越高越正面）。""";
+                要求：competitors 给 2-6 个真实主要竞品（小众细分品类可能只有 2-3 个，不要凑数）；compliance 给 2-4 条；sentiment 为 0-1 的差评率反向指标（越高越正面）。
+                compliance.level 校准口径（按真实监管后果评级，禁止保守虚高）：
+                high=不完成即无法上市、禁售或重罚（如 WEEE 未注册在德禁售、电子品缺 FCC 认证）；
+                medium=行业准入门槛，需文件或整改（如 CPSC 合规文件、CE 标志）；
+                low=常规警示或最佳实践（如加州 65 警示语、标签规范）。
+                非电子、非儿童、非食品接触类日用品通常没有 high 项。""";
 
         // P3：先采集真实数据源（frankfurter 汇率 + KB 三类 + Tavily 降级），已落库 market_data，不依赖 LLM
         CollectedDataBO data = dataCollector.collect(task);
@@ -97,7 +102,7 @@ public class MultiverseEngineImpl implements MultiverseEngine {
         Map<String, Object> parsed = null;
         try {
             for (int i = 1; i <= 2; i++) {
-                String raw = bailianManager.generateText(StageEnum.COLLECTING, systemPrompt, userPrompt);
+                String raw = bailianManager.generateText(StageEnum.COLLECTING, systemPrompt, userPrompt, task.getId());
                 parsed = JsonUtil.parseObject(raw);
                 if (parsed != null) break;
                 log.warn("采集数据 JSON 解析失败，重试 taskId={} attempt={}", task.getId(), i);
@@ -152,7 +157,11 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                 你是多元宇宙推演官。基于市场事实、该宇宙策略包与极端压力测试结果，推演其 90 天生存格局。
                 只输出严格合法的 JSON，不要输出任何解释文字或 markdown 标记。JSON 结构：
                 {"score":78,"survivalRate":0.78,"reasoning":"推演结论（80字内，需引用事实依据）"}
-                score 为 0-100 的生存分；必须结合合规风险、竞争密度、评论情绪、策略定位与压力测试整体存活率综合判断。""";
+                score 是 90 天生存分（该策略不因禁售、致命品控缺陷或现金流断裂而出局的把握），不是商业成功概率，按口径锚定：
+                - 存在未解决的高风险合规（禁售级）、压测整体存活 <0.60 或致命品控缺陷 → 60 以下；
+                - 无禁售级风险、压测整体存活 ≥0.70、卖点差异化清晰 → 75-85；
+                - 全维度干净（无禁售风险、竞争格局宽松、评论情绪正面、压测整体存活 ≥0.75 且最差风暴存活 ≥0.60、差异化明确）→ 86-95；
+                - 宇宙间必须有区分度，最强与最弱宇宙分差至少 8 分。""";
 
         List<CompletableFuture<Void>> futures = universes.stream()
                 .map(u -> CompletableFuture.runAsync(
@@ -172,27 +181,24 @@ public class MultiverseEngineImpl implements MultiverseEngine {
         // 2. 极端维度整体存活率（5 风暴均值），作为 LLM 推演输入
         double overallSurvival = queryOverallSurvival(universe.getId());
 
-        // 3. LLM 推演
+        // 3. LLM 推演（prompt 瘦身：市场事实压成摘要、证据链只带 ruleId:扣分对，该 prompt 被 5 宇宙重复使用）
         double llmScore = Double.NaN;
         String reasoning = "";
         try {
             String userPrompt = String.format("""
                     产品：%s（目标市场：%s）
-                    市场事实：%s
+                    市场事实摘要：%s
                     该宇宙策略包：%s
-                    规则引擎基线评估：%s
+                    规则引擎基线：%s
                     极端压力测试整体存活率：%.2f
                     请推演该宇宙 90 天后的生存格局，输出 JSON。""",
                     task.getProductName(), task.getTargetMarket(),
-                    JsonUtil.toJson(Map.of("competitors", data.getCompetitorData().get("competitors"),
-                            "compliance", data.getComplianceData().get("compliance"),
-                            "reviews", data.getReviewData())),
+                    compactFacts(data),
                     universe.getStrategyPackage(),
-                    JsonUtil.toJson(Map.of("survivalRate", ruleResult.getSurvivalRate(),
-                            "evidences", ruleResult.getEvidences())),
+                    compactBaseline(ruleResult),
                     overallSurvival);
 
-            String raw = bailianManager.generateText(StageEnum.EXPLORING, systemPrompt, userPrompt);
+            String raw = bailianManager.generateText(StageEnum.EXPLORING, systemPrompt, userPrompt, task.getId());
             Map<String, Object> parsed = JsonUtil.parseObject(raw);
             if (parsed != null && parsed.get("score") instanceof Number) {
                 llmScore = ((Number) parsed.get("score")).doubleValue();
@@ -210,7 +216,7 @@ public class MultiverseEngineImpl implements MultiverseEngine {
             double minSurvival = queryMinStormSurvival(universe.getId()) * 100; // 5 风暴最低分(风险)
             ruleScore = clampScore(0.50 * prior + 0.30 * avgSurvival + 0.20 * minSurvival);
             finalScore = ruleScore;
-            reasoning = "无 LLM key：按「策略画像先验 + 5 风暴压力融合」兜底评分（市场事实缺失，规则无法扣分）";
+            reasoning = "演示模式：未接入大模型，评分由「同类策略历史经验基准 + 5 场风暴压力测试」综合得出";
             log.warn("宇宙推演 LLM 输出不可用（RULE_ONLY_FALLBACK + 画像先验）universeId={} finalScore={} prior={}",
                     universe.getId(), Math.round(finalScore), Math.round(prior));
             // 兜底分完全来自「画像先验+风暴」，不复用规则扣分：清空规则证据，只留退化证据，避免与落库 ruleScore 冲突
@@ -269,6 +275,10 @@ public class MultiverseEngineImpl implements MultiverseEngine {
         if (ruleResult.getEvidences() == null) return;
         EvolutionResultBO.RuleEvidence e = new EvolutionResultBO.RuleEvidence();
         e.setRuleId("RULE_DEGRADED_PRIOR");
+        e.setLabel("演示模式评分");
+        e.setDescription(String.format(
+                "演示模式（未接入大模型）：得分 = 同类策略历史经验基准 %.0f 分×50%% + 5 场风暴压力测试平均 %.0f 分×30%% + 最差风暴承受力 %.0f 分×20%%",
+                prior, avgSurvival, minSurvival));
         e.setInput(String.format("LLM 不可用，策略画像先验=%.1f, avgStormSurvival=%.1f, minStormSurvival=%.1f",
                 prior, avgSurvival, minSurvival));
         e.setOutput(String.format("%.1f", score));
@@ -318,13 +328,13 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                     .map(u -> String.format("#%d rating=%s survivalRate=%s strategy=%s",
                             u.getUniverseIndex(), u.getRating(),
                             u.getSurvivalRate() == null ? "?" : u.getSurvivalRate(),
-                            u.getStrategyPackage()))
+                            compactStrategy(u.getStrategyPackage())))
                     .collect(Collectors.joining("\n"));
             String userPrompt = String.format("产品：%s（目标市场：%s）\n各宇宙推演结果：\n%s\n请输出定居决策 JSON。",
                     task.getProductName(), task.getTargetMarket(), universeSummaries);
 
             Map<String, Object> parsed = JsonUtil.parseObject(
-                    bailianManager.generateText(StageEnum.SETTLING, systemPrompt, userPrompt));
+                    bailianManager.generateText(StageEnum.SETTLING, systemPrompt, userPrompt, task.getId()));
             if (parsed != null && parsed.get("selectedUniverseIndex") instanceof Number) {
                 int idx = ((Number) parsed.get("selectedUniverseIndex")).intValue();
                 UniverseDO llmChoice = universes.stream()
@@ -380,6 +390,8 @@ public class MultiverseEngineImpl implements MultiverseEngine {
         if (!Double.isNaN(llmScore) && reasoning != null && !reasoning.isBlank()) {
             EvolutionResultBO.RuleEvidence r1 = new EvolutionResultBO.RuleEvidence();
             r1.setRuleId("R1_INFERRED");
+            r1.setLabel("模型推演");
+            r1.setDescription(reasoning);
             r1.setInput("LLM 格局推演");
             r1.setOutput(reasoning);
             r1.setWeight(0.5);
@@ -388,6 +400,49 @@ public class MultiverseEngineImpl implements MultiverseEngine {
         }
         return evidences;
     }
+
+    /** 市场事实摘要（推演 prompt 用，避免完整 JSON 在 5 宇宙间重复发送） */
+    private String compactFacts(CollectedDataBO data) {
+        int compCount = listOf(data.getCompetitorData(), "competitors").size();
+        Map<String, Long> levelCount = new java.util.LinkedHashMap<>();
+        for (Map<String, Object> item : listOf(data.getComplianceData(), "compliance")) {
+            String level = str(item.get("level")).toLowerCase();
+            if (!level.isBlank()) levelCount.merge(level, 1L, Long::sum);
+        }
+        Object sentiment = data.getReviewData() == null ? null : data.getReviewData().get("sentiment");
+        return String.format("竞品=%d个, 合规风险=%s, 评论情绪=%s",
+                compCount,
+                levelCount.isEmpty() ? "无" : levelCount,
+                sentiment instanceof Number n ? String.format("%.2f", n.doubleValue()) : "缺失");
+    }
+
+    /** 规则基线压缩：只保留 ruleId:扣分值 对（剔除 evidence 的 input/description 长文本） */
+    private String compactBaseline(EvolutionResultBO ruleResult) {
+        String deductions = (ruleResult.getEvidences() == null
+                ? List.<EvolutionResultBO.RuleEvidence>of() : ruleResult.getEvidences())
+                .stream()
+                .map(e -> e.getRuleId() + ":" + e.getOutput())
+                .collect(java.util.stream.Collectors.joining(", "));
+        return String.format("ruleScore=%.1f, 扣分明细=[%s]", ruleResult.getSurvivalRate() * 100, deductions);
+    }
+
+    /** 策略包摘要（结算 prompt 用，避免 5 宇宙完整包 JSON） */
+    private String compactStrategy(String strategyPackage) {
+        Map<String, Object> pkg = JsonUtil.parseObject(strategyPackage);
+        if (pkg == null) return "未知";
+        return String.format("%s/%s/%s, price=%s",
+                str(pkg.get("pricingStrategy")), str(pkg.get("sellingPointStrategy")),
+                str(pkg.get("positioningStrategy")), pkg.get("price"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> listOf(Map<String, Object> data, String key) {
+        if (data == null) return List.of();
+        Object v = data.get(key);
+        return v instanceof List ? (List<Map<String, Object>>) v : List.of();
+    }
+
+    private String str(Object v) { return v == null ? "" : v.toString(); }
 
     private UniverseBO toUniverseBO(UniverseDO universe) {
         UniverseBO bo = new UniverseBO();

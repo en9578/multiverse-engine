@@ -58,6 +58,10 @@ export interface ProgressVO {
 
 export interface RuleEvidence {
   ruleId: string;
+  /** 规则中文名（人话标题，如「合规风险」），后端新字段，缺省时回退 ruleId */
+  label?: string;
+  /** 自然语言描述（绑定具体数据），后端新字段，缺省时回退 input */
+  description?: string;
   input: string;
   output: string;
   weight: number;

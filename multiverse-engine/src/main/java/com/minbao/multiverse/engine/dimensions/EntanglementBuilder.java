@@ -21,6 +21,8 @@ import java.util.Map;
  * 推演竞品对卖家策略的反应（跟价/跟款/差异化/无视）：
  * 规则基线做确定性启发式推演（source=heuristic，按竞品价格/评分/销量规模阈值判断）+ R1 推理增强补充
  * （source=r1_inferred，规则未覆盖场景）。competitor_strategy_kb 反哺规则后 rule 行方可升为 source=kb。
+ * Token 成本约束（2026-09-12）：R1 增强按任务 **批量单次** 调用（原每宇宙 1 次共 5 次），
+ * 解析失败/超预算按宇宙降级为仅规则反应，不影响编排。
  */
 @Component
 public class EntanglementBuilder {
@@ -29,39 +31,62 @@ public class EntanglementBuilder {
     @Resource private CompetitorReactionDAO competitorReactionDAO;
     @Resource private R1Enhancer r1Enhancer;
 
-    public void build(UniverseBO universe, CollectedDataBO data, String traceId) {
+    /** 规则基线：逐宇宙插入确定性启发式反应（不发 LLM 调用） */
+    public void buildRuleReactions(UniverseBO universe, CollectedDataBO data, String traceId) {
         Map<String, Object> pkg = JsonUtil.parseObject(universe.getStrategyPackage());
         double ourPrice = number(pkg == null ? null : pkg.get("price"));
 
-        // 1. 规则基线（可解释）
         int ruleCount = 0;
         for (Map<String, Object> comp : listOf(data.getCompetitorData(), "competitors")) {
             competitorReactionDAO.insert(ruleReaction(universe.getUniverseId(), ourPrice, comp, traceId));
             ruleCount++;
         }
+        log.info("关联规则反应完成 universeId={} ruleReactions={}", universe.getUniverseId(), ruleCount);
+    }
 
-        // 2. R1 增强（规则未覆盖场景，source=r1_inferred）
-        String r1 = r1Enhancer.enhance(systemPrompt(), userPrompt(universe, data));
+    /** R1 增强：全部策略宇宙合并为单次调用；返回各宇宙成功补充的反应数 */
+    public Map<Long, Integer> enhanceReactions(List<UniverseBO> universes, CollectedDataBO data,
+                                                Long taskId, String traceId) {
+        Map<Long, Integer> r1CountByUniverse = new java.util.HashMap<>();
+        String system = systemPrompt();
+        String universeBlocks = universes.stream()
+                .map(u -> String.format("- universeId=%d 策略包：%s", u.getUniverseId(), u.getStrategyPackage()))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        String user = String.format("""
+                市场竞品事实：%s
+                各宇宙策略包：
+                %s
+                请为每个宇宙补充规则未覆盖的竞品关联反应 JSON。""",
+                JsonUtil.toJson(Map.of("competitors", data.getCompetitorData().get("competitors"))),
+                universeBlocks);
+
+        String r1 = r1Enhancer.enhance(system, user, taskId);
         Map<String, Object> parsed = JsonUtil.parseObject(r1);
-        int r1Count = 0;
-        if (parsed != null && parsed.get("reactions") instanceof List<?> list) {
+        if (parsed != null && parsed.get("universes") instanceof List<?> list) {
             for (Object item : list) {
-                if (!(item instanceof Map<?, ?> m)) continue;
-                CompetitorReactionDO reaction = new CompetitorReactionDO();
-                reaction.setUniverseId(universe.getUniverseId());
-                reaction.setCompetitorName(str(m.get("competitorName"), "未知竞品"));
-                reaction.setReactionType(str(m.get("reactionType"), ReactionTypeEnum.DIFFERENTIATE.getLabel()));
-                reaction.setProbability(clamp(number(m.get("probability")) == 0 ? 0.5 : number(m.get("probability"))));
-                reaction.setImpact(str(m.get("impact"), ""));
-                reaction.setSource("r1_inferred");
-                reaction.setEvidence(str(m.get("evidence"), ""));
-                reaction.setTraceId(traceId);
-                competitorReactionDAO.insert(reaction);
-                r1Count++;
+                if (!(item instanceof Map<?, ?> u)) continue;
+                Long universeId = u.get("universeId") instanceof Number n ? n.longValue() : null;
+                if (universeId == null || !(u.get("reactions") instanceof List<?> reactions)) continue;
+                int count = 0;
+                for (Object r : reactions) {
+                    if (!(r instanceof Map<?, ?> m)) continue;
+                    CompetitorReactionDO reaction = new CompetitorReactionDO();
+                    reaction.setUniverseId(universeId);
+                    reaction.setCompetitorName(str(m.get("competitorName"), "未知竞品"));
+                    reaction.setReactionType(str(m.get("reactionType"), ReactionTypeEnum.DIFFERENTIATE.getLabel()));
+                    reaction.setProbability(clamp(number(m.get("probability")) == 0 ? 0.5 : number(m.get("probability"))));
+                    reaction.setImpact(str(m.get("impact"), ""));
+                    reaction.setSource("r1_inferred");
+                    reaction.setEvidence(str(m.get("evidence"), ""));
+                    reaction.setTraceId(traceId);
+                    competitorReactionDAO.insert(reaction);
+                    count++;
+                }
+                r1CountByUniverse.put(universeId, count);
             }
         }
-        log.info("关联推演完成 universeId={} ruleReactions={} r1Reactions={}",
-                universe.getUniverseId(), ruleCount, r1Count);
+        log.info("关联 R1 批量增强完成 universes={} r1Universes={}", universes.size(), r1CountByUniverse.size());
+        return r1CountByUniverse;
     }
 
     /** 规则基线：按竞品价格差/评分/销量规模匹配反应模式 */
@@ -112,19 +137,10 @@ public class EntanglementBuilder {
 
     private String systemPrompt() {
         return """
-                你是竞品关联推演官（场景五方向②）。基于该宇宙策略与市场事实，识别规则引擎可能未覆盖的竞品关联反应。
+                你是竞品关联推演官（场景五方向②）。基于各宇宙策略与市场事实，识别规则引擎可能未覆盖的竞品关联反应。
                 只输出严格合法的 JSON，不要输出任何解释文字或 markdown 标记。JSON 结构：
-                {"reactions":[{"competitorName":"竞品名","reactionType":"跟价|跟款|差异化|无视","probability":0.6,"impact":"影响一句话","evidence":"推理依据一句话"}]}
-                要求：只补充规则未覆盖的场景，reactions 可空数组。""";
-    }
-
-    private String userPrompt(UniverseBO universe, CollectedDataBO data) {
-        return String.format("""
-                该宇宙策略包：%s
-                市场竞品事实：%s
-                请补充规则未覆盖的竞品关联反应 JSON。""",
-                universe.getStrategyPackage(),
-                JsonUtil.toJson(Map.of("competitors", data.getCompetitorData().get("competitors"))));
+                {"universes":[{"universeId":123,"reactions":[{"competitorName":"竞品名","reactionType":"跟价|跟款|差异化|无视","probability":0.6,"impact":"影响一句话","evidence":"推理依据一句话"}]}]}
+                要求：universes 必须覆盖给出的每个 universeId；只补充规则未覆盖的场景，reactions 可空数组。每宇宙最多 3 条。""";
     }
 
     @SuppressWarnings("unchecked")

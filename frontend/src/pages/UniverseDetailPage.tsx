@@ -106,24 +106,24 @@ export default function UniverseDetailPage() {
           <div className="mt-22 card">
             <div className="flex-between">
               <h3>推演评分总览</h3>
-              {degraded && <span className="badge" style={{ color: 'var(--amber-soft)', borderColor: 'rgba(240,165,46,.4)' }}>⚙ 兜底评分模式</span>}
+              {degraded && <span className="badge" style={{ color: 'var(--amber-soft)', borderColor: 'rgba(240,165,46,.4)' }}>⚙ 演示模式评分</span>}
             </div>
             <div className="stat-grid">
               <div className="stat"><div className="num">{score(ev.finalScore)}</div><div className="lbl">综合得分 / 100</div></div>
               <div className="stat"><div className="num">{pct(dv.survivalRate)}</div><div className="lbl">90 天存活率</div></div>
-              <div className="stat"><div className="num plain">{ev.llmScore !== null ? score(ev.llmScore) : '—'}</div><div className="lbl">LLM 模型分</div></div>
-              <div className="stat"><div className="num plain">{ev.ruleScore !== null ? score(ev.ruleScore) : '—'}</div><div className="lbl">规则/先验分</div></div>
+              <div className="stat"><div className="num plain">{ev.llmScore !== null ? score(ev.llmScore) : '—'}</div><div className="lbl">AI 模型评分</div></div>
+              <div className="stat"><div className="num plain">{ev.ruleScore !== null ? score(ev.ruleScore) : '—'}</div><div className="lbl">{degraded ? '演示模式得分' : '规则核查评分'}</div></div>
             </div>
             <div className="mt-14">
-              <h4 style={{ margin: '0 0 8px' }}>推演结论（reasoning）</h4>
+              <h4 style={{ margin: '0 0 8px' }}>推演结论</h4>
               <p className="muted" style={{ margin: 0 }}>{ev.reasoning || '—'}</p>
             </div>
           </div>
 
           {degraded && (
             <div className="mt-14">
-              <DegradedBanner reason="本宇宙按「策略画像先验 + 5 风暴压力融合」评分（市场事实缺失、规则无法扣分）。配置 DASHSCOPE_API_KEY 后将改为 LLM 与规则引擎双通道交叉验证。">
-                <span className="muted">评分构成：0.5×策略画像先验 + 0.3×压力平均存活 + 0.2×最差风暴存活。下方证据链可逐条追溯。</span>
+              <DegradedBanner reason="本宇宙处于演示模式：未接入大模型，评分由策略历史经验与风暴压力测试综合得出。接入真实模型后，将改为「AI 推演 + 规则核查」双通道交叉验证。">
+                <span className="muted">评分构成：同类策略历史经验基准占 50%、5 场风暴压力测试平均表现占 30%、最差风暴承受力占 20%。</span>
               </DegradedBanner>
             </div>
           )}
@@ -138,7 +138,7 @@ export default function UniverseDetailPage() {
           </div>
 
           <div className="mt-14 card">
-            <h3>🧾 可解释证据链 <span className="muted-tag" style={{ fontWeight: 400 }}>每条规则的扣分/加成均可追溯</span></h3>
+            <h3>🧾 可解释证据链 <span className="muted-tag" style={{ fontWeight: 400 }}>每一条扣分都写明原因与数据来源，按影响从大到小排列</span></h3>
             <EvidenceList evidences={ev.evidences} />
           </div>
 

@@ -12,15 +12,15 @@ const CAT_LABEL: Record<string, string> = {
   TAVILY: '实时搜索',
 };
 const SRC_LABEL: Record<string, string> = {
-  frankfurter: 'frankfurter 真实汇率',
-  kb: 'KB 知识库',
-  kb_stale: 'KB 知识库(过期)',
-  tavily: 'Tavily(未配置)',
+  frankfurter: '实时汇率数据源',
+  kb: '内置知识库',
+  kb_stale: '内置知识库（数据较旧）',
+  tavily: '联网搜索（未配置）',
 };
 const STATUS_TEXT: Record<string, string> = {
-  FRESH: 'Fresh 全权重',
-  STALE: 'Stale 降权 0.5x',
-  MISSING: 'Missing 纯 R1',
+  FRESH: '数据新鲜 · 全额计分',
+  STALE: '数据较旧 · 扣分减半',
+  MISSING: '暂无数据 · 仅 AI 推断',
 };
 
 function catLabel(c: string) { return CAT_LABEL[c] ?? c; }
@@ -43,8 +43,8 @@ export default function FreshnessPanel({ items, productName, targetMarket }: {
   return (
     <div>
       <p className="muted">
-        市场事实先于模型采集并落库：{productName && targetMarket ? `${productName} @ ${targetMarket}` : ''} ——
-        Fresh 全权重 / Stale 降权 / Missing 时模型只能凭先验推断（R1）。
+        进入市场前先采集真实市场数据（{productName && targetMarket ? `${productName} @ ${targetMarket}` : '本任务'}）：
+        数据新鲜则全额计分，数据较旧则扣分减半，缺数据时只能由 AI 凭经验推断。
       </p>
       <div>
         <div className="fresh-row head">
@@ -56,7 +56,7 @@ export default function FreshnessPanel({ items, productName, targetMarket }: {
             <span className="muted" style={{ fontSize: 12 }}>{srcLabel(it.source)}</span>
             <span className="muted-tag">
               {it.lastVerified || '—'}
-              {it.freshnessTtlDays ? ` · ${it.freshnessTtlDays}d` : ''}
+              {it.freshnessTtlDays ? ` · 保鲜期 ${it.freshnessTtlDays} 天` : ''}
             </span>
             <span className="muted" style={{ fontSize: 12.5 }} title={it.display}>{it.display}</span>
             <span>

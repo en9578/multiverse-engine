@@ -38,10 +38,12 @@ public class MultiverseGenerator {
         List<UniverseBO> strategyUniverses = strategyDimensionBuilder.buildUniverses(task, data);
 
         for (UniverseBO universe : strategyUniverses) {
-            entanglementBuilder.build(universe, data, task.getTraceId());
+            entanglementBuilder.buildRuleReactions(universe, data, task.getTraceId());
             extremeDimensionBuilder.build(universe, data, task.getTraceId());
             weatherForecaster.forecast(universe.getUniverseId(), data, task.getTraceId());
         }
+        // R1 关联反应增强：全部策略宇宙合并为单次 LLM 调用（Token 成本约束，原为每宇宙 1 次共 5 次）
+        entanglementBuilder.enhanceReactions(strategyUniverses, data, task.getId(), task.getTraceId());
         log.info("多元宇宙生成完成 taskId={} time={} strategies={}",
                 task.getId(), timeUniverses.size(), strategyUniverses.size());
         return new Multiverse(timeUniverses, strategyUniverses);

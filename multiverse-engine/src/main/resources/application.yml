@@ -67,3 +67,9 @@ logging:
     org.springframework: warn
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} [%X{traceId}] - %msg%n"
+
+# LLM 成本护栏（Token 预算）：单任务全链路 token 上限，超限后调用被拒并沿 LLM_DEGRADED 降级路径走
+minbao:
+  llm:
+    budget-enabled: true
+    budget-per-task-tokens: 30000

@@ -5,6 +5,7 @@ import com.minbao.multiverse.dao.BailianCallLogDAO;
 import com.minbao.multiverse.domain.entity.BailianCallLogDO;
 import com.minbao.multiverse.enums.ErrorCodeEnum;
 import com.minbao.multiverse.enums.StageEnum;
+import com.minbao.multiverse.engine.budget.TokenBudgetManager;
 import com.minbao.multiverse.manager.BailianManager;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -65,6 +66,10 @@ public class BailianManagerImpl implements BailianManager {
     @Resource
     private CircuitBreaker bailianBreaker;
 
+    /** 任务级 token 预算守卫（超限拒绝调用 → 调用方降级；成功后按 usage 归账） */
+    @Resource
+    private TokenBudgetManager tokenBudget;
+
     /** Spring AI OpenAI starter 自动装配（指向 ws- 工作空间兼容基地址） */
     @Resource
     private ChatModel chatModel;
@@ -77,6 +82,16 @@ public class BailianManagerImpl implements BailianManager {
 
     @Override
     public String generateText(StageEnum stage, String systemPrompt, String userPrompt) {
+        return generateText(stage, systemPrompt, userPrompt, null);
+    }
+
+    @Override
+    public String generateText(StageEnum stage, String systemPrompt, String userPrompt, Long taskId) {
+        // 任务级预算守卫：超限直接拒绝，调用方沿既有 LLM_DEGRADED 降级路径处理（模板宇宙/规则融合/规则兜底）
+        if (!tokenBudget.tryAcquire(taskId)) {
+            throw new BusinessException(ErrorCodeEnum.LLM_DEGRADED);
+        }
+
         String model = stage.getModelName();
         String requestId = generateRequestId(stage);
         String fullPrompt = buildPrompt(systemPrompt, userPrompt);
@@ -97,8 +112,9 @@ public class BailianManagerImpl implements BailianManager {
             long attemptStart = System.currentTimeMillis();
             try {
                 TextOutcome out = bailianBreaker.executeSupplier(
-                        () -> doGenerateText(model, systemPrompt, userPrompt));
+                        () -> doGenerateText(stage, systemPrompt, userPrompt));
                 long costMs = System.currentTimeMillis() - attemptStart;
+                tokenBudget.record(taskId, out.tokenCount());
                 callLogDAO.insert(BailianCallLogDO.success(requestId, "text", model,
                         truncate(fullPrompt, 500), out.text(), costMs, out.tokenCount()));
                 log.info("百炼文本生成成功 requestId={} stage={} model={} retry={} costMs={}ms tokens={}",
@@ -121,9 +137,10 @@ public class BailianManagerImpl implements BailianManager {
         throw new BusinessException(ErrorCodeEnum.BAILIAN_CALL_TIMEOUT);
     }
 
-    private TextOutcome doGenerateText(String model, String systemPrompt, String userPrompt) {
+    private TextOutcome doGenerateText(StageEnum stage, String systemPrompt, String userPrompt) {
         OpenAiChatOptions options = OpenAiChatOptions.builder()
-                .model(model)
+                .model(stage.getModelName())
+                .maxTokens(stage.getMaxOutputTokens())
                 .build();
 
         List<Message> messages;

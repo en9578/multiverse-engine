@@ -40,7 +40,7 @@ public class TimeDimensionBuilder {
         log.info("构建时间维度宇宙 taskId={}", task.getId());
         List<Map<String, Object>> timePoints = new ArrayList<>();
         try {
-            String raw = bailianManager.generateText(StageEnum.GENERATING, systemPrompt(), userPrompt(task, data));
+            String raw = bailianManager.generateText(StageEnum.GENERATING, systemPrompt(), userPrompt(task, data), task.getId());
             Map<String, Object> parsed = JsonUtil.parseObject(raw);
             if (parsed != null && parsed.get("timeUniverses") instanceof List<?> list) {
                 for (Object item : list) {

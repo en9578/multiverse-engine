@@ -18,6 +18,7 @@ import com.minbao.multiverse.domain.vo.ProgressVO;
 import com.minbao.multiverse.domain.vo.TaskVO;
 import com.minbao.multiverse.domain.vo.UniverseVO;
 import com.minbao.multiverse.enums.ErrorCodeEnum;
+import com.minbao.multiverse.engine.budget.TokenBudgetManager;
 import com.minbao.multiverse.enums.TaskStatusEnum;
 import com.minbao.multiverse.manager.MultiverseEngine;
 import com.minbao.multiverse.service.MultiverseOrchestratorService;
@@ -44,6 +45,7 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
     @Resource private MarketDataDAO marketDataDAO;
     @Resource private MultiverseEngine multiverseEngine;
     @Resource @Qualifier("multiverseExecutor") private ThreadPoolTaskExecutor multiverseExecutor;
+    @Resource private TokenBudgetManager tokenBudget;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -93,7 +95,7 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
             multiverseTaskDAO.updateResult(task.getId(), JsonUtil.toJson(settlement), "SETTLING", 100);
 
             updateStatus(task.getId(), TaskStatusEnum.DONE);
-            log.info("任务完成 taskId={}", task.getId());
+            log.info("任务完成 taskId={} totalTokensUsed={}", task.getId(), tokenBudget.used(task.getId()));
         } catch (Exception e) {
             log.error("编排异常 taskId={}", task.getId(), e);
             updateStatus(task.getId(), TaskStatusEnum.FAILED);
@@ -178,14 +180,14 @@ public class MultiverseOrchestratorServiceImpl implements MultiverseOrchestrator
         String lastVerified = row.getLastVerified() == null ? "无" : row.getLastVerified().toString();
         String status = row.getFreshnessStatus() == null ? "MISSING" : row.getFreshnessStatus();
         if ("TAVILY".equals(row.getCategory()) && "MISSING".equals(status)) {
-            return "TAVILY，来源 tavily（未配置 TAVILY_API_KEY，本轮跳过实时搜索，KB 兜底）";
+            return "实时搜索未配置（TAVILY_API_KEY），本轮跳过联网搜索，由内置知识库兜底";
         }
         return switch (status) {
             case "FRESH" -> row.getCategory() + "，来源 " + row.getSource()
-                    + "，最后验证 " + lastVerified + "，Fresh 全权重";
+                    + "，最后验证 " + lastVerified + "，数据新鲜，全额计分";
             case "STALE" -> row.getCategory() + "，来源 " + row.getSource()
-                    + "，最后验证 " + lastVerified + "，Stale 降权 0.5x";
-            default -> row.getCategory() + "，来源 " + row.getSource() + "（无实时数据，纯 R1 推理）";
+                    + "，最后验证 " + lastVerified + "，数据较旧，扣分减半";
+            default -> row.getCategory() + "，来源 " + row.getSource() + "（暂无数据，仅 AI 凭经验推断）";
         };
     }
 

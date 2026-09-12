@@ -25,6 +25,10 @@ public class EvolutionResultBO implements Serializable {
         public static final String SRC_HEURISTIC = "heuristic";
 
         private String ruleId;
+        /** 规则中文名（面向业务用户的人话标题，如「合规风险」） */
+        private String label;
+        /** 自然语言描述（面向业务用户，绑定具体数据，替代机器格式 input 作为主展示） */
+        private String description;
         private String input;
         private String output;
         private Double weight;

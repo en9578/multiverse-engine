@@ -98,8 +98,11 @@ public class RuleEngineImpl implements RuleEngine {
             else if ("medium".equalsIgnoreCase(level)) medium++;
         }
         double deduction = -(high * 15 + medium * 5);
+        String desc = (high > 0 || medium > 0)
+                ? String.format("该市场有 %d 项高风险、%d 项中风险合规要求，进入前需先解决，否则会被下架或罚款", high, medium)
+                : "未发现明显合规风险，此项不扣分";
         evidences.add(evidence("RULE_COMPLIANCE_RISK",
-                "high=" + high + ", medium=" + medium, deduction, 1.0));
+                "high=" + high + ", medium=" + medium, desc, deduction, 1.0));
         return deduction;
     }
 
@@ -107,8 +110,10 @@ public class RuleEngineImpl implements RuleEngine {
     private double applyCompetitionRule(CollectedDataBO data, List<EvolutionResultBO.RuleEvidence> evidences) {
         int count = listOf(data.getCompetitorData(), "competitors").size();
         double deduction = count > 8 ? -20 : (count >= 4 ? -10 : 0);
+        String density = count > 8 ? "竞争激烈，获客成本高" : (count >= 4 ? "竞争适中" : "竞争压力小");
         evidences.add(evidence("RULE_COMPETITION",
-                "competitorCount=" + count, deduction, 0.8));
+                "competitorCount=" + count,
+                String.format("该市场现有 %d 个同类竞品，%s", count, density), deduction, 0.8));
         return deduction;
     }
 
@@ -118,7 +123,10 @@ public class RuleEngineImpl implements RuleEngine {
         double s = has ? ((Number) data.getReviewData().get("sentiment")).doubleValue() : 0.7;
         double deduction = s < 0.4 ? -20 : (s < 0.6 ? -10 : 0);
         String input = has ? String.format("sentiment=%.2f", s) : "sentiment=缺失(缺省0.7,不扣分)";
-        evidences.add(evidence("RULE_REVIEW_SENTIMENT", input, deduction, 0.9));
+        String mood = s < 0.4 ? "整体偏负面，差评风险高" : (s < 0.6 ? "好坏参半" : "整体偏正面");
+        String desc = has ? String.format("买家评论情绪得分 %.2f（满分 1 分），%s", s, mood)
+                : "暂未获取到买家评论数据，按经验缺省值处理，此项不扣分";
+        evidences.add(evidence("RULE_REVIEW_SENTIMENT", input, desc, deduction, 0.9));
         return deduction;
     }
 
@@ -133,14 +141,21 @@ public class RuleEngineImpl implements RuleEngine {
                 .mapToDouble(p -> ((Number) p).doubleValue())
                 .average().orElse(0);
         if (myPrice == null || avg <= 0) {
-            evidences.add(evidence("RULE_PRICE_POSITION", "no price info", 0, 0.5));
+            evidences.add(evidence("RULE_PRICE_POSITION", "no price info",
+                    "暂无定价与竞品价格数据，此项不扣分", 0, 0.5));
             return 0;
         }
         double premium = (myPrice - avg) / avg;
         double deduction = premium > 0.5 ? -15 : 0;
+        String posn = premium > 0.5
+                ? String.format("高出市场 %.0f%%，溢价过高，可能流失价格敏感买家", premium * 100)
+                : premium > 0
+                        ? String.format("高出市场 %.0f%%，溢价在合理范围", premium * 100)
+                        : "低于市场均价，价格更有吸引力";
         evidences.add(evidence("RULE_PRICE_POSITION",
                 String.format("myPrice=%.2f, avgCompetitorPrice=%.2f, premium=%.0f%%",
                         myPrice, avg, premium * 100),
+                String.format("本策略定价 %.0f 元（竞品均价 %.0f 元），%s", myPrice, avg, posn),
                 deduction, 0.7));
         return deduction;
     }
@@ -179,7 +194,13 @@ public class RuleEngineImpl implements RuleEngine {
                     e.getId(), e.getName(),
                     e.getMarket() == null ? "ALL" : e.getMarket(),
                     market, e.getSeverity(), fi.status().name(), fi.weight());
-            evidences.add(evidence("RULE_COMPLIANCE_KB", input,
+            boolean stale = "kb_stale".equals(fi.source());
+            String tail = stale
+                    ? String.format("；该政策数据已过保鲜期，扣分按半价计为 %.1f 分", -contrib)
+                    : String.format("，扣 %.0f 分", -contrib);
+            String desc = String.format("进入该市场需完成《%s》相关合规注册（%s）%s",
+                    e.getName(), severityText(e.getSeverity()), tail);
+            evidences.add(evidence("RULE_COMPLIANCE_KB", input, desc,
                     Math.round(contrib * 10) / 10.0, fi.weight(), fi.source()));
         }
         return deduction;
@@ -207,14 +228,39 @@ public class RuleEngineImpl implements RuleEngine {
 
     private String str(Object v) { return v == null ? "" : v.toString(); }
 
-    /** 启发式规则证据（默认 source=heuristic：确定性规则/无 KB 依据，不再冒充 kb） */
-    private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, double output, double weight) {
-        return evidence(ruleId, input, output, weight, EvolutionResultBO.RuleEvidence.SRC_HEURISTIC);
+    /** 规则中文名映射（ruleId → 面向业务用户的人话标题） */
+    private static String labelFor(String ruleId) {
+        return switch (ruleId) {
+            case "RULE_COMPLIANCE_RISK" -> "合规风险";
+            case "RULE_COMPETITION" -> "竞争密度";
+            case "RULE_REVIEW_SENTIMENT" -> "评论情绪";
+            case "RULE_PRICE_POSITION" -> "价格定位";
+            case "RULE_COMPLIANCE_KB" -> "政策合规";
+            case "RULE_DEGRADED_PRIOR" -> "演示模式评分";
+            case "R1_INFERRED" -> "AI 推演结论";
+            default -> ruleId;
+        };
     }
 
-    private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, double output, double weight, String source) {
+    private static String severityText(String s) {
+        return switch (s == null ? "" : s.toLowerCase()) {
+            case "high" -> "高风险";
+            case "medium" -> "中风险";
+            case "low" -> "低风险";
+            default -> "合规要求";
+        };
+    }
+
+    /** 启发式规则证据（默认 source=heuristic：确定性规则/无 KB 依据，不再冒充 kb） */
+    private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, String description, double output, double weight) {
+        return evidence(ruleId, input, description, output, weight, EvolutionResultBO.RuleEvidence.SRC_HEURISTIC);
+    }
+
+    private EvolutionResultBO.RuleEvidence evidence(String ruleId, String input, String description, double output, double weight, String source) {
         EvolutionResultBO.RuleEvidence e = new EvolutionResultBO.RuleEvidence();
         e.setRuleId(ruleId);
+        e.setLabel(labelFor(ruleId));
+        e.setDescription(description);
         e.setInput(input);
         e.setOutput(String.valueOf(output));
         e.setWeight(weight);

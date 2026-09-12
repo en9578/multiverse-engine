@@ -23,11 +23,12 @@ public class R1Enhancer {
 
     /**
      * R1 推理增强：按给定提示词做深度推理，返回原始输出（由调用方解析）。
+     * 带 taskId：纳入任务级 token 预算（超预算抛 LLM_DEGRADED → 此处吞掉返回 null，调用方降级仅规则）。
      * 失败返回 null。
      */
-    public String enhance(String systemPrompt, String userPrompt) {
+    public String enhance(String systemPrompt, String userPrompt, Long taskId) {
         try {
-            return bailianManager.generateText(StageEnum.EXPLORING, systemPrompt, userPrompt);
+            return bailianManager.generateText(StageEnum.EXPLORING, systemPrompt, userPrompt, taskId);
         } catch (Exception e) {
             log.warn("R1 增强失败，降级为仅规则推演：{}", e.getMessage());
             return null;
