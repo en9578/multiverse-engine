@@ -188,12 +188,14 @@ public class MultiverseEngineImpl implements MultiverseEngine {
             String userPrompt = String.format("""
                     产品：%s（目标市场：%s）
                     市场事实摘要：%s
+                    关键事实：%s
                     该宇宙策略包：%s
                     规则引擎基线：%s
                     极端压力测试整体存活率：%.2f
                     请推演该宇宙 90 天后的生存格局，输出 JSON。""",
                     task.getProductName(), task.getTargetMarket(),
                     compactFacts(data),
+                    keyFacts(data),
                     universe.getStrategyPackage(),
                     compactBaseline(ruleResult),
                     overallSurvival);
@@ -414,6 +416,24 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                 compCount,
                 levelCount.isEmpty() ? "无" : levelCount,
                 sentiment instanceof Number n ? String.format("%.2f", n.doubleValue()) : "缺失");
+    }
+
+    /** 关键事实一行（最强竞品 + 高频缺陷）：让推演结论能点名引用，成本 ~40 token */
+    private String keyFacts(CollectedDataBO data) {
+        Map<String, Object> top = null;
+        double bestRating = -1;
+        for (Map<String, Object> c : listOf(data.getCompetitorData(), "competitors")) {
+            double r = c.get("rating") instanceof Number n ? n.doubleValue() : 0;
+            if (r > bestRating) { bestRating = r; top = c; }
+        }
+        String topCompetitor = top == null ? "无" : String.format("%s（评分 %.1f）",
+                str(top.get("name")), bestRating < 0 ? 0 : bestRating);
+        String defect = "无";
+        if (data.getReviewData() != null && data.getReviewData().get("defects") instanceof List<?> list
+                && !list.isEmpty() && list.get(0) instanceof Map<?, ?> d && d.get("name") != null) {
+            defect = String.valueOf(d.get("name"));
+        }
+        return String.format("最强竞品：%s；高频缺陷：%s", topCompetitor, defect);
     }
 
     /** 规则基线压缩：只保留 ruleId:扣分值 对（剔除 evidence 的 input/description 长文本） */
