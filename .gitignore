@@ -12,3 +12,11 @@ frontend/dist/
 
 # TS incremental build artifacts
 *.tsbuildinfo
+
+# Submission / contest materials (not project code)
+*复赛作品提交模板*
+*复赛作品.docx
+_submission_template.txt
+bailian_test_output/
+*.mp4
+*.mov

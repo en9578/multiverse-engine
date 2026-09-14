@@ -5,6 +5,7 @@ import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -35,6 +36,14 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public Result<Void> handleConstraintViolation(ConstraintViolationException e) {
         return Result.error(ErrorCodeEnum.INVALID_PARAM.getCode(), e.getMessage());
+    }
+
+    /** 请求体不可读（JSON 格式错误 / 非 UTF-8 编码）属客户端错误，返回 400 而非 500 */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败 msg={}", e.getMessage());
+        return Result.error(ErrorCodeEnum.INVALID_PARAM.getCode(), "请求体格式错误或非 UTF-8 编码");
     }
 
     @ExceptionHandler(Exception.class)

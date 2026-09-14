@@ -202,9 +202,11 @@ public class MultiverseEngineImpl implements MultiverseEngine {
 
             String raw = bailianManager.generateText(StageEnum.EXPLORING, systemPrompt, userPrompt, task.getId());
             Map<String, Object> parsed = JsonUtil.parseObject(raw);
-            if (parsed != null && parsed.get("score") instanceof Number) {
-                llmScore = ((Number) parsed.get("score")).doubleValue();
+            llmScore = parseScore(parsed);
+            if (!Double.isNaN(llmScore)) {
                 reasoning = String.valueOf(parsed.getOrDefault("reasoning", ""));
+            } else {
+                log.warn("宇宙推演 LLM score 未解析 universeId={} raw={}", universe.getId(), raw);
             }
         } catch (Exception e) {
             log.warn("宇宙推演 LLM 调用失败，降级为仅规则推演 universeId={}", universe.getId(), e);
@@ -245,6 +247,24 @@ public class MultiverseEngineImpl implements MultiverseEngine {
                 JsonUtil.toJson(evolution));
         log.info("宇宙推演完成 universeId={} finalScore={} rating={} llmUsed={} overallSurvival={}",
                 universe.getId(), Math.round(finalScore), rating, !Double.isNaN(llmScore), overallSurvival);
+    }
+
+    /** 从推演 JSON 提取 score，兼容数字与字符串（模型偶尔把数字引号包裹）；无有效值返回 NaN */
+    private double parseScore(Map<String, Object> parsed) {
+        if (parsed == null) return Double.NaN;
+        Object score = parsed.get("score");
+        if (score instanceof Number n) return n.doubleValue();
+        if (score instanceof String s) {
+            String cleaned = s.trim().replaceAll("[^0-9.]", "");
+            if (!cleaned.isEmpty()) {
+                try {
+                    return Double.parseDouble(cleaned);
+                } catch (NumberFormatException ignore) {
+                    // 非数值字符串，走兜底
+                }
+            }
+        }
+        return Double.NaN;
     }
 
     /** 查询该策略宇宙 5 风暴压力测试的整体存活率（均值，无则 1.0） */
