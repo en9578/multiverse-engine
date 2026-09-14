@@ -1,5 +1,5 @@
 import type { UniverseVO } from '../types/api';
-import { comboLabel, parseStrategyPackage, pct } from '../lib/format';
+import { comboLabel, parseStrategyPackage, pct, universeName } from '../lib/format';
 import RatingBadge from './RatingBadge';
 import { useNavigate } from 'react-router-dom';
 
@@ -21,7 +21,7 @@ export default function UniverseCard({ u }: { u: UniverseVO }) {
       <div className="top">
         <RatingBadge rating={u.rating} />
         <div style={{ minWidth: 0 }}>
-          <div className="name">{sp?.universeName ?? `宇宙 #${u.universeIndex}`}</div>
+          <div className="name">{universeName(sp, u.universeIndex)}</div>
           <div className="combo">{comboLabel(sp)}</div>
         </div>
       </div>

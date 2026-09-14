@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import type { UniverseVO } from '../types/api';
-import { comboLabel, isDegraded, parseStrategyPackage, pct, score, rememberTask } from '../lib/format';
+import { comboLabel, isDegraded, parseStrategyPackage, pct, score, rememberTask, timePointLabel, urgencyLabel, universeName } from '../lib/format';
 import RatingBadge from '../components/RatingBadge';
 import DegradedBanner from '../components/DegradedBanner';
 import StormRadar from '../components/StormRadar';
@@ -67,7 +67,7 @@ export default function UniverseDetailPage() {
         <div className="flex" style={{ gap: 14, flexWrap: 'wrap' }}>
           <RatingBadge rating={headerU?.rating ?? ''} size={44} />
           <div>
-            <h1 className="title" style={{ fontSize: 24, margin: 0 }}>{sp?.universeName ?? `宇宙 #${headerU?.universeIndex ?? ''}`}</h1>
+            <h1 className="title" style={{ fontSize: 24, margin: 0 }}>{universeName(sp, headerU?.universeIndex)}</h1>
             <div className="combo mt-8">{comboLabel(sp)}</div>
           </div>
         </div>
@@ -83,20 +83,36 @@ export default function UniverseDetailPage() {
       {/* 未推演态（TIME 宇宙或空演化） */}
       {dv && !evolved && (
         <div className="mt-22">
-          <div className="card">
-            <h3>{dimension === 'TIME' ? '⏳ 时间宇宙：宏观场景（未推演）' : 'ℹ️ 该宇宙尚未推演'}</h3>
-            <p className="muted">
-              {dimension === 'TIME'
-                ? '时间宇宙描述产品在不同时间切片的宏观机会，不逐宇宙评分（无评级与存活率）。下方为其场景策略包。'
-                : '该宇宙暂无演化数据。'}
-            </p>
-            <div className="mt-14">
-              <h4>策略 / 场景包</h4>
-              <pre className="mono" style={{ whiteSpace: 'pre-wrap', background: 'var(--bg-2)', padding: 14, borderRadius: 12, border: '1px solid var(--border)' }}>
-                {JSON.stringify(sp, null, 2)}
-              </pre>
+          {dimension === 'TIME' ? (
+            <div className="card">
+              <h3>⏳ 时间宇宙：{timePointLabel(sp?.timePoint)}</h3>
+              <p className="muted" style={{ marginTop: 0 }}>
+                时间宇宙描述该产品在「{timePointLabel(sp?.timePoint)}」这个时间切片的宏观机会，不逐宇宙评分——它回答「什么时候入场」，评分与定居决策交给策略宇宙。
+              </p>
+              <div className="stat-grid" style={{ marginTop: 14 }}>
+                <div className="stat"><div className="num plain">{sp?.lifecycleStage ?? '—'}</div><div className="lbl">生命周期阶段</div></div>
+                <div className="stat"><div className="num plain">{sp?.opportunityType ?? '—'}</div><div className="lbl">机会类型</div></div>
+                <div className="stat"><div className="num plain">{urgencyLabel(sp?.urgency)}</div><div className="lbl">紧迫度</div></div>
+              </div>
+              {sp?.opportunityWindow && (
+                <div className="mt-14">
+                  <h4 style={{ margin: '0 0 8px' }}>机会窗口</h4>
+                  <p className="muted" style={{ margin: 0 }}>{sp.opportunityWindow}</p>
+                </div>
+              )}
+              <div className="mt-14">
+                <h4 style={{ margin: '0 0 8px' }}>原始场景数据</h4>
+                <pre className="mono" style={{ whiteSpace: 'pre-wrap', background: 'var(--bg-2)', padding: 14, borderRadius: 12, border: '1px solid var(--border)', maxHeight: 200, overflow: 'auto' }}>
+                  {JSON.stringify(sp, null, 2)}
+                </pre>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="card">
+              <h3>ℹ️ 该宇宙尚未推演</h3>
+              <p className="muted">该宇宙暂无演化数据。</p>
+            </div>
+          )}
         </div>
       )}
 

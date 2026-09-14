@@ -15,12 +15,36 @@ export function parseStrategyPackage(raw: string | null | undefined): StrategyPa
   return p && typeof p === 'object' && !Array.isArray(p) ? p : null;
 }
 
+const TIME_POINT_LABEL: Record<string, string> = {
+  past_6m: '过去 6 个月',
+  now: '现在',
+  future_3m: '未来 3 个月',
+};
+const URGENCY_LABEL: Record<string, string> = {
+  high: '高',
+  medium: '中',
+  low: '低',
+};
+
+export function timePointLabel(tp?: string): string {
+  return (tp && TIME_POINT_LABEL[tp]) || tp || '时间宇宙';
+}
+export function urgencyLabel(u?: string): string {
+  return (u && URGENCY_LABEL[u.toLowerCase()]) || u || '—';
+}
+/** 宇宙显示名：策略宇宙用 universeName，时间宇宙用中文时间点 */
+export function universeName(sp: StrategyPackage | null, index?: number): string {
+  if (sp?.dimension === 'TIME') return timePointLabel(sp.timePoint);
+  return sp?.universeName ?? `宇宙 #${index ?? ''}`;
+}
+
 /** 策略宇宙完整三元组标签（5 组合唯一）；TIME 宇宙返回时间点标签 */
 export function comboLabel(sp: StrategyPackage | null): string {
   if (!sp) return '未知策略';
   if (sp.dimension === 'TIME') {
-    const t = sp.timePoint || sp.lifecycleStage || sp.opportunityType;
-    return `⏳ ${t ?? '时间宇宙'}`;
+    const t = timePointLabel(sp.timePoint);
+    const stage = sp.lifecycleStage ? ` · ${sp.lifecycleStage}` : '';
+    return `⏳ ${t}${stage}`;
   }
   const p = sp.pricingStrategy || '—';
   const s = sp.sellingPointStrategy || '—';
